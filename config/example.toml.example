@@ -1,0 +1,59 @@
+# Form description — template.
+#
+# Copy to ~/.config/pdf-flatfill/forms/<name>.toml and adapt.
+# This file describes WHERE to put WHAT; it therefore carries the real values
+# and never enters the repository.
+#
+# Run:  fill-pdf <name> -C /path/to/the/pdf/directory
+#       fill-pdf <name> -C ... --dry-run     (check without writing)
+
+# Paths are relative to the directory given to -C / --workdir.
+source = "blank-form.pdf"
+output = "filled-form.pdf"
+
+[style]
+ink  = [0.05, 0.15, 0.7]   # RGB from 0 to 1 — ink blue
+font = "helv"              # PyMuPDF built-in font
+size = 10                  # default size, overridable entry by entry
+
+# --- Text -------------------------------------------------------------------
+# page is 1-INDEXED: the first page of the PDF is numbered 1, as in a viewer.
+# The origin (x=0, y=0) is the TOP left corner, and y is the text baseline —
+# not its top.
+
+[[text]]
+page = 1
+x = 75
+y = 230
+size = 11
+text = "DOE"
+note = "Last name"  # free field, ignored by the tool: there to re-read yourself
+
+[[text]]
+page = 1
+x = 75
+y = 277
+size = 11
+text = "Alex"
+note = "First name"
+
+# --- Check marks ------------------------------------------------------------
+# A cross laid down like text: these forms have no real fields.
+
+[[check]]
+page = 1
+x = 96
+y = 332
+size = 11
+note = "Ms. checkbox"
+# mark = "X"        # uncomment for a different mark
+
+# --- Images -----------------------------------------------------------------
+# rect = [x0, y0, x1, y1], top left corner then bottom right corner.
+
+[[image]]
+page = 2
+rect = [395, 395, 525, 435]
+file = "signature.png"
+note = "Signature"
+# keep_proportion = true

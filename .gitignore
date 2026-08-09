@@ -1,0 +1,7 @@
+# Personal descriptions: they live in ~/.config/pdf-flatfill/forms/
+*.toml
+!config/*.toml.example
+
+# Working PDFs: never in the repository
+*.pdf
+__pycache__/

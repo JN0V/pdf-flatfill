@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+"""Fill a non-interactive PDF by laying text, check marks and images onto it.
+
+The what (coordinates and values) lives in a TOML description file; the how
+lives here. See README.md for the format and the pitfalls.
+"""
+
+import argparse
+import os
+import sys
+import tomllib
+from pathlib import Path
+
+CONF_DIR = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "pdf-flatfill"
+FORMS_DIR = CONF_DIR / "forms"
+
+DEFAULT_INK = (0.05, 0.15, 0.7)   # ink blue
+DEFAULT_FONT = "helv"
+DEFAULT_SIZE = 10
+
+
+def die(message):
+    print(f"fill-pdf: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def resolve_form(name):
+    """A path is taken as-is; a bare name is looked up under the config dir."""
+    candidate = Path(name)
+    if candidate.suffix == ".toml" or candidate.exists():
+        return candidate
+    return FORMS_DIR / f"{name}.toml"
+
+
+def load_form(path):
+    if not path.is_file():
+        hint = ""
+        if path.parent == FORMS_DIR:
+            hint = f"\n  Known descriptions: {', '.join(known_forms()) or 'none'}"
+        die(f"description not found: {path}{hint}")
+    try:
+        with path.open("rb") as handle:
+            return tomllib.load(handle)
+    except tomllib.TOMLDecodeError as exc:
+        die(f"{path} is not valid TOML: {exc}")
+
+
+def known_forms():
+    if not FORMS_DIR.is_dir():
+        return []
+    return sorted(p.stem for p in FORMS_DIR.glob("*.toml"))
+
+
+def get_page(doc, entry, kind, index):
+    """Page numbers are 1-indexed in a description.
+
+    That is deliberately the opposite of the PyMuPDF API: you write a
+    description while looking at the PDF in a viewer, where the first page is
+    numbered 1.
+
+    With doc=None (a dry run without PyMuPDF) only the shape is checked, not
+    whether the page exists in the PDF.
+    """
+    number = entry.get("page")
+    if number is None:
+        die(f"[[{kind}]] #{index}: missing 'page' field")
+    if not isinstance(number, int) or number < 1:
+        die(f"[[{kind}]] #{index}: 'page' must be an integer >= 1 (got {number!r})")
+    if doc is None:
+        return None
+    if number > doc.page_count:
+        die(
+            f"[[{kind}]] #{index}: page {number} requested, "
+            f"but the PDF only has {doc.page_count}"
+        )
+    return doc[number - 1]
+
+
+def require(entry, keys, kind, index):
+    missing = [k for k in keys if k not in entry]
+    if missing:
+        die(f"[[{kind}]] #{index}: missing field(s): {', '.join(missing)}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="fill-pdf",
+        description="Fill a PDF from a TOML description.",
+    )
+    parser.add_argument(
+        "form", nargs="?",
+        help=f"name of a description in {FORMS_DIR}/, or a path to a .toml file",
+    )
+    parser.add_argument(
+        "-C", "--workdir", default=".",
+        help="directory holding the source PDF and the images (default: current directory)",
+    )
+    parser.add_argument(
+        "-n", "--dry-run", action="store_true",
+        help="print the plan without writing anything",
+    )
+    parser.add_argument(
+        "-f", "--force", action="store_true",
+        help="overwrite the output PDF if it already exists",
+    )
+    parser.add_argument(
+        "--list", action="store_true",
+        help="list the available descriptions and exit",
+    )
+    args = parser.parse_args()
+
+    if args.list:
+        names = known_forms()
+        if not names:
+            print(f"No description in {FORMS_DIR}.")
+        for name in names:
+            print(name)
+        return
+
+    if not args.form:
+        parser.error("give a description, or --list to see the known ones")
+
+    form_path = resolve_form(args.form)
+    form = load_form(form_path)
+
+    workdir = Path(args.workdir).expanduser()
+    if not workdir.is_dir():
+        die(f"working directory not found: {workdir}")
+
+    for key in ("source", "output"):
+        if key not in form:
+            die(f"{form_path}: missing '{key}' field")
+
+    source = workdir / form["source"]
+    output = workdir / form["output"]
+
+    if not source.is_file():
+        die(f"source PDF not found: {source}")
+    if output.exists() and not args.force and not args.dry_run:
+        die(f"{output} already exists. Re-run with --force to overwrite it.")
+
+    style = form.get("style", {})
+    ink = tuple(style.get("ink", DEFAULT_INK))
+    font = style.get("font", DEFAULT_FONT)
+    base_size = style.get("size", DEFAULT_SIZE)
+
+    texts = form.get("text", [])
+    checks = form.get("check", [])
+    images = form.get("image", [])
+
+    if not (texts or checks or images):
+        die(f"{form_path} describes no [[text]], [[check]] or [[image]]")
+
+    print(f"Description : {form_path}")
+    print(f"Source      : {source}")
+    print(f"Output      : {output}")
+    print(f"Contents    : {len(texts)} text(s), {len(checks)} mark(s), {len(images)} image(s)")
+
+    # Imported late: a dry run must be able to proof-read a description on a
+    # machine where PyMuPDF is not installed.
+    #
+    # Since PyMuPDF 1.24 the module is named `pymupdf`; `fitz` remains a
+    # deprecated legacy alias. So we try the modern name first.
+    try:
+        import pymupdf as fitz
+    except ImportError:
+        try:
+            import fitz
+        except ImportError:
+            if not args.dry_run:
+                die(
+                    "PyMuPDF is required and missing.\n"
+                    "  Debian / Ubuntu : sudo apt install python3-pymupdf\n"
+                    "  Elsewhere       : pip install pymupdf inside a venv\n"
+                    "  (pip --user fails on PEP 668, and pipx only installs\n"
+                    "   applications: the library would stay invisible.)"
+                )
+            fitz = None
+            print("\nPyMuPDF missing: pages will not be checked against the PDF.")
+
+    doc = fitz.open(source) if fitz else None
+
+    for index, entry in enumerate(texts, 1):
+        require(entry, ("x", "y", "text"), "text", index)
+        page = get_page(doc, entry, "text", index)
+        if not args.dry_run:
+            page.insert_text(
+                fitz.Point(entry["x"], entry["y"]),
+                str(entry["text"]),
+                fontsize=entry.get("size", base_size),
+                fontname=font,
+                color=ink,
+            )
+
+    for index, entry in enumerate(checks, 1):
+        require(entry, ("x", "y"), "check", index)
+        page = get_page(doc, entry, "check", index)
+        if not args.dry_run:
+            page.insert_text(
+                fitz.Point(entry["x"], entry["y"]),
+                entry.get("mark", "X"),
+                fontsize=entry.get("size", base_size),
+                fontname=font,
+                color=ink,
+            )
+
+    for index, entry in enumerate(images, 1):
+        require(entry, ("rect", "file"), "image", index)
+        rect = entry["rect"]
+        if len(rect) != 4:
+            die(f"[[image]] #{index}: 'rect' expects 4 values (x0, y0, x1, y1)")
+        picture = workdir / entry["file"]
+        if not picture.is_file():
+            die(f"[[image]] #{index}: file not found: {picture}")
+        page = get_page(doc, entry, "image", index)
+        if not args.dry_run:
+            page.insert_image(
+                fitz.Rect(*rect),
+                filename=str(picture),
+                keep_proportion=entry.get("keep_proportion", True),
+                overlay=True,
+            )
+
+    if args.dry_run:
+        if doc:
+            doc.close()
+        print("\nDry run: nothing was written.")
+        return
+
+    doc.save(output)
+    doc.close()
+    print(f"\nWritten: {output}")
+
+
+if __name__ == "__main__":
+    main()
