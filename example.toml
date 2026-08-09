@@ -1,13 +1,13 @@
 # Form description — template.
 #
-# Copy to ~/.config/pdf-flatfill/forms/<name>.toml and adapt.
-# This file describes WHERE to put WHAT; it therefore carries the real values
-# and never enters the repository.
+# Copy this file NEXT TO THE PDF it fills, rename it, and adapt it. It
+# describes WHERE to put WHAT, so it carries the real values — a name, a date
+# of birth, an address — and must never be committed to a repository.
 #
-# Run:  fill-pdf <name> -C /path/to/the/pdf/directory
-#       fill-pdf <name> -C ... --dry-run     (check without writing)
+# Run:  fill-pdf my-form.toml --dry-run     (check without writing)
+#       fill-pdf my-form.toml
 
-# Paths are relative to the directory given to -C / --workdir.
+# Paths are relative to THIS FILE's directory, not to the current directory.
 source = "blank-form.pdf"
 output = "filled-form.pdf"
 

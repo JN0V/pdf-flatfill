@@ -36,7 +36,8 @@ so a `git pull` updates the installation. Set `BIN_DIR` to install elsewhere:
 BIN_DIR=~/.local/bin ./install.sh
 ```
 
-`install.sh` warns you if the target directory is not on your `PATH`.
+`install.sh` warns you if the target directory is not on your `PATH`. It creates
+nothing else — pdf-flatfill owns no directory under `$HOME`.
 
 ### Dependency: PyMuPDF
 
@@ -77,34 +78,57 @@ machine where PyMuPDF is not installed.
 
 ## Usage
 
+Copy the template next to the PDF you want to fill, edit it, then:
+
 ```bash
-fill-pdf --list                                # known descriptions
-fill-pdf <description> -C <dir> --dry-run      # check without writing
-fill-pdf <description> -C <dir>                # write
-fill-pdf <description> -C <dir> --force        # overwrite an existing output
+fill-pdf my-form.toml --dry-run      # check without writing
+fill-pdf my-form.toml                # write
+fill-pdf my-form.toml --force        # overwrite an existing output
 ```
 
-`-C` points at the directory where the source PDF and the images live; the
-description's `source` and `output` are relative to it.
+## Where descriptions live: next to their PDF
 
-## Where descriptions live
+A description's `source`, `output` and image paths are **relative to the
+description file itself**, not to the directory you happen to be standing in.
+So a folder like this works from anywhere:
 
-In `~/.config/pdf-flatfill/forms/<name>.toml` — **never in the repository**.
-`$XDG_CONFIG_HOME` is honoured if set.
+```
+tax-return-2026/
+├── blank-form.pdf
+├── signature.png
+└── return.toml          <- source = "blank-form.pdf"
+```
 
-This is not a convenience, it is the whole point of the split. A description
-carries a name, a date and place of birth, a national ID number, an address, a
-phone number, an education history. A git repository engraves all of that into a
-history that stays recoverable even after deletion. So the repository holds only
-the engine and an empty template (`config/example.toml.example`).
+```bash
+fill-pdf ~/papers/tax-return-2026/return.toml     # no other argument needed
+```
 
-You can also pass a path directly — `fill-pdf ./somewhere/form.toml` — for a
-one-off that does not deserve a name.
+This is the one design decision worth arguing for. The description and its PDF
+are meaningless apart: the description names a source file and addresses
+coordinates on its pages, down to the millimetre. Keeping them in one folder
+means the folder is reproducible on its own, it survives being moved or backed
+up as a unit, and the same command means the same thing no matter where it is
+typed. A central store of descriptions, by contrast, is a set of pointers that
+break silently the day you rename a folder.
+
+It also keeps the personal data where it belongs. A description carries a name,
+a date and place of birth, a national ID number, an address, a phone number.
+**Never commit one to a repository** — git engraves all of that into a history
+that stays recoverable long after deletion. That is why this repository holds
+only the engine and an empty template (`example.toml`), and why its `.gitignore`
+refuses `*.toml` and `*.pdf` outright.
+
+`-C` overrides the frame of reference for the rare case where the description
+cannot sit with its PDF:
+
+```bash
+fill-pdf ~/descriptions/return.toml -C ~/papers/tax-return-2026
+```
 
 ## Description format
 
 ```toml
-source = "blank-form.pdf"          # relative to -C
+source = "blank-form.pdf"          # relative to this file's directory
 output = "filled-form.pdf"
 
 [style]

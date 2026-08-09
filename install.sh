@@ -5,15 +5,16 @@
 # Principle: the real files stay in the clone, the system only gets symlinks.
 # A git pull therefore updates the installation, without copying anything.
 #
+# There is nothing else to install: a description lives next to the PDF it
+# fills, so pdf-flatfill owns no directory of its own under $HOME.
+#
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="${BIN_DIR:-$HOME/bin}"
-CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/pdf-flatfill"
-FORMS_DIR="$CONF_DIR/forms"
 
 echo "Clone : $REPO"
-mkdir -p "$BIN_DIR" "$FORMS_DIR"
+mkdir -p "$BIN_DIR"
 
 echo
 echo "== Executables =="
@@ -34,17 +35,6 @@ case ":$PATH:" in
 esac
 
 echo
-echo "== Configuration =="
-# Never overwritten: descriptions carry personal data.
-if [ -f "$CONF_DIR/example.toml" ]; then
-    echo "  $CONF_DIR/example.toml already exists, left untouched."
-else
-    cp "$REPO/config/example.toml.example" "$CONF_DIR/example.toml"
-    echo "  $CONF_DIR/example.toml created from the template."
-fi
-echo "  Descriptions : $FORMS_DIR"
-
-echo
 echo "== Dependency =="
 if python3 -c "import pymupdf" 2>/dev/null || python3 -c "import fitz" 2>/dev/null; then
     echo "  PyMuPDF found."
@@ -55,5 +45,6 @@ else
 fi
 
 echo
-echo "Done. List the known descriptions with:"
-echo "  fill-pdf --list"
+echo "Done. To describe a form, copy the template next to your PDF:"
+echo "  cp $REPO/example.toml /path/to/your/pdf/folder/my-form.toml"
+echo "  fill-pdf /path/to/your/pdf/folder/my-form.toml --dry-run"

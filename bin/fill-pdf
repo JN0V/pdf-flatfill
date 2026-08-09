@@ -3,16 +3,17 @@
 
 The what (coordinates and values) lives in a TOML description file; the how
 lives here. See README.md for the format and the pitfalls.
+
+A description lives next to the PDF it fills, and its paths are relative to
+itself. The pair is meaningless apart: the description names a source PDF and
+addresses coordinates on its pages, so keeping the two together is what makes a
+folder reproducible on its own.
 """
 
 import argparse
-import os
 import sys
 import tomllib
 from pathlib import Path
-
-CONF_DIR = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "pdf-flatfill"
-FORMS_DIR = CONF_DIR / "forms"
 
 DEFAULT_INK = (0.05, 0.15, 0.7)   # ink blue
 DEFAULT_FONT = "helv"
@@ -24,31 +25,14 @@ def die(message):
     raise SystemExit(1)
 
 
-def resolve_form(name):
-    """A path is taken as-is; a bare name is looked up under the config dir."""
-    candidate = Path(name)
-    if candidate.suffix == ".toml" or candidate.exists():
-        return candidate
-    return FORMS_DIR / f"{name}.toml"
-
-
 def load_form(path):
     if not path.is_file():
-        hint = ""
-        if path.parent == FORMS_DIR:
-            hint = f"\n  Known descriptions: {', '.join(known_forms()) or 'none'}"
-        die(f"description not found: {path}{hint}")
+        die(f"description not found: {path}")
     try:
         with path.open("rb") as handle:
             return tomllib.load(handle)
     except tomllib.TOMLDecodeError as exc:
         die(f"{path} is not valid TOML: {exc}")
-
-
-def known_forms():
-    if not FORMS_DIR.is_dir():
-        return []
-    return sorted(p.stem for p in FORMS_DIR.glob("*.toml"))
 
 
 def get_page(doc, entry, kind, index):
@@ -88,12 +72,13 @@ def main():
         description="Fill a PDF from a TOML description.",
     )
     parser.add_argument(
-        "form", nargs="?",
-        help=f"name of a description in {FORMS_DIR}/, or a path to a .toml file",
+        "form",
+        help="path to the .toml description",
     )
     parser.add_argument(
-        "-C", "--workdir", default=".",
-        help="directory holding the source PDF and the images (default: current directory)",
+        "-C", "--workdir", default=None,
+        help="resolve the description's paths against this directory instead "
+             "of the directory holding the description",
     )
     parser.add_argument(
         "-n", "--dry-run", action="store_true",
@@ -103,29 +88,20 @@ def main():
         "-f", "--force", action="store_true",
         help="overwrite the output PDF if it already exists",
     )
-    parser.add_argument(
-        "--list", action="store_true",
-        help="list the available descriptions and exit",
-    )
     args = parser.parse_args()
 
-    if args.list:
-        names = known_forms()
-        if not names:
-            print(f"No description in {FORMS_DIR}.")
-        for name in names:
-            print(name)
-        return
-
-    if not args.form:
-        parser.error("give a description, or --list to see the known ones")
-
-    form_path = resolve_form(args.form)
+    form_path = Path(args.form).expanduser()
     form = load_form(form_path)
 
-    workdir = Path(args.workdir).expanduser()
-    if not workdir.is_dir():
-        die(f"working directory not found: {workdir}")
+    # The description sits next to its PDF, so its own directory is the frame
+    # of reference. Anchoring on the current directory instead would make the
+    # same command succeed or fail depending on where it was typed.
+    if args.workdir is None:
+        workdir = form_path.parent
+    else:
+        workdir = Path(args.workdir).expanduser()
+        if not workdir.is_dir():
+            die(f"working directory not found: {workdir}")
 
     for key in ("source", "output"):
         if key not in form:

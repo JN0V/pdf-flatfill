@@ -1,6 +1,6 @@
-# Personal descriptions: they live in ~/.config/pdf-flatfill/forms/
+# Descriptions carry personal data and live next to their PDF, never here.
 *.toml
-!config/*.toml.example
+!example.toml
 
 # Working PDFs: never in the repository
 *.pdf
