@@ -1,0 +1,48 @@
+# End-to-end tests of the web app, plus the compatibility loop with the CLI:
+# the TOML the web app exports must be accepted verbatim by fill-pdf.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/e2e/package-lock.json
+
+      - name: Install test dependencies
+        working-directory: tests/e2e
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Run end-to-end tests
+        working-directory: tests/e2e
+        run: npx playwright test
+
+      # La boucle est fermée avec le moteur Python : la description exportée
+      # par la web app pendant les tests doit passer fill-pdf telle quelle.
+      - name: CLI accepts the exported TOML
+        run: |
+          pip install pymupdf
+          bin/fill-pdf tests/e2e/.artifacts/formulaire.toml --dry-run
+
+      - name: Keep traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: tests/e2e/test-results/
+          if-no-files-found: ignore

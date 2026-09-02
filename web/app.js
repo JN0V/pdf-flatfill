@@ -487,7 +487,8 @@ function serializeToml() {
   out.push(`output = ${tomlString(outputName())}`);
   out.push('');
   out.push('[style]');
-  out.push(`ink  = [${state.style.ink.map(fmt).join(', ')}]`);
+  // Pas de fmt() ici : l'encre garde sa précision (0.05 n'est pas 0.1).
+  out.push(`ink  = [${state.style.ink.map(String).join(', ')}]`);
   out.push(`font = ${tomlString(state.style.font)}`);
   out.push(`size = ${fmt(state.style.size)}`);
 

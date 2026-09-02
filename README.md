@@ -195,6 +195,16 @@ The CLI stays the headless reference. A description written by one is read by
 the other; the coordinate conventions (points, top-left origin, baseline `y`,
 1-indexed pages) are identical by construction.
 
+`tests/e2e/` covers the whole journey in a real browser (Playwright): load,
+place text, check marks and images, delete, navigate, zoom, export, generate,
+resume from a description. The suite also feeds its exported TOML back to
+`fill-pdf --dry-run`, so the two front-ends cannot drift apart silently. CI
+runs all of it on every push; locally:
+
+```bash
+cd tests/e2e && npm install && npx playwright install chromium && npm test
+```
+
 ## Roadmap
 
 **A graphical coordinate picker.** Hand-writing `x` and `y` is the one genuinely
