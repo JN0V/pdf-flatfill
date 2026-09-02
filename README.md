@@ -38,9 +38,11 @@ a plain X, real ✓ ✗ ● glyphs (ZapfDingbats, one of the standard PDF fonts)
 any character. Dropping the PDF together with its description puts everything
 back in place for another pass.
 
-The interface speaks French, English, German, Spanish and Italian — detected
-from the browser, switchable in the app. Only the interface: the TOML format
-stays language-neutral.
+The interface speaks the fifteen most spoken languages in the world — English,
+Chinese, Hindi, Spanish, French, Arabic (right-to-left), Bengali, Portuguese,
+Russian, Urdu (right-to-left), Indonesian, German, Japanese, Turkish,
+Vietnamese — plus Italian. Detected from the browser, switchable in the app.
+Only the interface: the TOML format stays language-neutral.
 
 The TOML stays the storage format — this matters. A description remains
 diffable, reviewable and editable by hand, the CLI keeps working headless and in

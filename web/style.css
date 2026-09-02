@@ -293,6 +293,10 @@ button { font: inherit; cursor: pointer; }
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   font-size: 13px;
 }
+[dir="rtl"] .pager {
+  /* In RTL the panel sits on the left: shift the centre accordingly. */
+  left: calc((100vw + 320px) / 2);
+}
 .pager-btn {
   border: 0; background: none;
   color: var(--muted);

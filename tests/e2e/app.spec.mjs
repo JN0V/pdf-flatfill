@@ -296,7 +296,10 @@ test.describe.serial('resuming a description', () => {
 });
 
 test.describe('internationalization', () => {
-  for (const lang of ['fr', 'en', 'de', 'es', 'it']) {
+  // The 15 most spoken languages worldwide, plus Italian.
+  const LANGS = ['en', 'zh', 'hi', 'es', 'fr', 'ar', 'bn', 'pt', 'ru', 'ur', 'id', 'de', 'ja', 'tr', 'vi', 'it'];
+  const RTL = ['ar', 'ur'];
+  for (const lang of LANGS) {
     test(`everything fits on screen in "${lang}"`, async ({ browser }) => {
       const context = await browser.newContext({
         locale: lang, viewport: { width: 1440, height: 900 },
@@ -304,7 +307,10 @@ test.describe('internationalization', () => {
       const page = await context.newPage();
       await page.goto('/');
       await expect(page.locator('html')).toHaveAttribute('lang', lang);
+      await expect(page.locator('html')).toHaveAttribute('dir', RTL.includes(lang) ? 'rtl' : 'ltr');
       await expect(page.locator('h1')).not.toBeEmpty();
+      // The language switcher offers every language, in its own name.
+      await expect(page.locator('.lang-select').first().locator('option')).toHaveCount(16);
       expect(await page.evaluate(() => document.body.scrollWidth <= window.innerWidth)).toBe(true);
 
       await page.setInputFiles('#file-input', pdfPath);
