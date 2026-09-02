@@ -252,6 +252,29 @@ arbitrary payloads. Two things to settle before committing to it:
 This would complement the TOML-next-to-the-PDF convention, not replace it: the
 standalone file remains the diffable, hand-editable reference.
 
+## Built on
+
+pdf-flatfill is a thin layer over tools that do the heavy lifting; they deserve
+the credit:
+
+- [PyMuPDF](https://pymupdf.readthedocs.io/) (AGPL-3.0, commercial licences
+  from Artifex) — the CLI's engine: rendering-grade PDF manipulation from
+  Python. Not shipped here; you install it yourself.
+- [pdf.js](https://mozilla.github.io/pdf.js/) (Apache-2.0, Mozilla) — renders
+  the pages in the web app.
+- [pdf-lib](https://pdf-lib.js.org/) (MIT) — paints the filled PDF in the
+  browser.
+- [smol-toml](https://github.com/squirrelchat/smol-toml) (BSD-3-Clause) —
+  parses descriptions in the web app.
+- [Playwright](https://playwright.dev/) (Apache-2.0, Microsoft) — drives the
+  end-to-end tests.
+- [Instrument Sans](https://fonts.google.com/specimen/Instrument+Sans) and
+  [JetBrains Mono](https://www.jetbrains.com/lp/mono/) (both SIL OFL 1.1) —
+  the interface typefaces.
+
+The web app loads its dependencies from [jsDelivr](https://www.jsdelivr.com/),
+pinned to exact versions.
+
 ## License
 
 MIT
