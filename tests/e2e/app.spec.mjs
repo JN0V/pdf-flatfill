@@ -143,7 +143,9 @@ test.describe.serial('editing journey', () => {
     await page.locator('.placed', { hasText: 'DUPONT' }).click();
     await expect(page.locator('#popover')).toBeHidden();
     await expect(page.locator('.placed', { hasText: 'DUPONT' })).toHaveClass(/is-selected/);
-    // A double click opens the editor.
+    // A double click opens the editor — after a human-length pause, so the
+    // node must survive the selection (a rebuild here once ate the gesture).
+    await page.waitForTimeout(400);
     await page.locator('.placed', { hasText: 'DUPONT' }).dblclick();
     await expect(page.locator('#popover')).toBeVisible();
     await expect(page.locator('#popover-title')).toHaveText('Modifier le texte');
@@ -451,6 +453,44 @@ test.describe.serial('custom fonts (signatures)', () => {
     await (await chooser).setFiles(fontPath);
     await page.click('#generate');
     await expect(page.locator('#done')).toBeVisible();
+  });
+});
+
+test.describe('small screens', () => {
+  test('portrait phone: stacked layout, nothing overflows', async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'fr' });
+    const page = await context.newPage();
+    await page.goto('/');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.setInputFiles('#file-input', pdfPath);
+    await expect(page.locator('#editor')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const layout = await page.evaluate(() => {
+      const viewer = document.getElementById('viewer').getBoundingClientRect();
+      const panel = document.querySelector('.panel').getBoundingClientRect();
+      const pager = document.querySelector('.pager').getBoundingClientRect();
+      return {
+        panelBelowViewer: panel.top >= viewer.bottom - 1,
+        panelFullWidth: panel.width >= window.innerWidth - 2,
+        pagerAbovePanel: pager.bottom <= panel.top + 2,
+        pagerOnScreen: pager.left >= 0 && pager.right <= window.innerWidth,
+      };
+    });
+    expect(layout).toEqual({
+      panelBelowViewer: true, panelFullWidth: true,
+      pagerAbovePanel: true, pagerOnScreen: true,
+    });
+    await context.close();
+  });
+
+  test('landscape phone: nothing overflows', async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 844, height: 390 }, locale: 'fr' });
+    const page = await context.newPage();
+    await page.goto('/');
+    await page.setInputFiles('#file-input', pdfPath);
+    await expect(page.locator('#editor')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await context.close();
   });
 });
 

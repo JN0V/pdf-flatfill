@@ -419,6 +419,32 @@ button { font: inherit; cursor: pointer; }
   text-transform: uppercase;
 }
 
+/* ===== Small screens: stack the panel below the page ===== */
+
+@media (max-width: 720px) {
+  .topbar {
+    height: auto; min-height: 56px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 8px 12px;
+    justify-content: center;
+  }
+  .topbar-left { min-width: 0; }
+  .file-chip { max-width: 46vw; }
+  .workspace { flex-direction: column; }
+  .viewer { min-height: 0; padding: 12px 12px 56px; }
+  .panel {
+    width: auto; height: 40vh; flex-shrink: 0;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+  .pager, [dir="rtl"] .pager {
+    left: 50%;
+    bottom: calc(40vh + 10px);
+  }
+  .popover { width: min(300px, calc(100vw - 24px)); }
+}
+
 /* ===== Popover ===== */
 
 .popover {

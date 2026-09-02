@@ -461,15 +461,7 @@ function renderOverlay() {
       } else {
         el.classList.add('is-missing');
       }
-      if (index === state.selected) {
-        const handle = document.createElement('div');
-        handle.className = 'resize-handle';
-        handle.addEventListener('pointerdown', (event) => {
-          event.stopPropagation();
-          startDrag(event, index, 'resize');
-        });
-        el.appendChild(handle);
-      }
+      if (index === state.selected) attachHandle(el, index);
     } else {
       el = document.createElement('div');
       el.className = 'placed';
@@ -489,6 +481,7 @@ function renderOverlay() {
       });
     }
     if (index === state.selected) el.classList.add('is-selected');
+    el.dataset.index = index;
     el.addEventListener('pointerdown', (event) => startDrag(event, index, 'move'));
     // Drawing-app convention: one click selects (arrows then nudge it),
     // a double click opens the editor.
@@ -533,6 +526,16 @@ function cssInk([r, g, b]) {
   return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
 }
 
+function attachHandle(el, index) {
+  const handle = document.createElement('div');
+  handle.className = 'resize-handle';
+  handle.addEventListener('pointerdown', (event) => {
+    event.stopPropagation();
+    startDrag(event, index, 'resize');
+  });
+  el.appendChild(handle);
+}
+
 function select(index) {
   state.selected = index;
   const entry = state.entries[index];
@@ -541,10 +544,24 @@ function select(index) {
     render().then(updatePanelSelection);
     return;
   }
-  renderOverlay();
-  // Never rebuild the list here: a double-click in progress would lose its
-  // node between the two clicks (and editing would never open).
+  // Never rebuild the overlay or the list here: a double-click in progress
+  // would lose its node between the two clicks and editing would never
+  // open. Selection only toggles classes on the existing elements.
+  updateOverlaySelection();
   updatePanelSelection();
+}
+
+function updateOverlaySelection() {
+  for (const el of els.overlay.children) {
+    const index = Number(el.dataset.index);
+    const selected = index === state.selected;
+    el.classList.toggle('is-selected', selected);
+    if (el.classList.contains('placed-image')) {
+      const handle = el.querySelector('.resize-handle');
+      if (selected && !handle) attachHandle(el, index);
+      if (!selected && handle) handle.remove();
+    }
+  }
 }
 
 function updatePanelSelection() {
@@ -1034,7 +1051,7 @@ document.addEventListener('keydown', (e) => {
       closePopover();
     } else if (state.selected !== null) {
       state.selected = null;
-      renderOverlay();
+      updateOverlaySelection();
       updatePanelSelection();
     }
   }
