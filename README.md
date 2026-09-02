@@ -184,6 +184,25 @@ diffable, reviewable and editable by hand, the CLI keeps working headless and in
 scripts, and the GUI is only an authoring front-end over the same file. Anything
 that made the GUI the sole way in would trade those properties away for nothing.
 
+**To consider: carry the description inside the filled PDF.** Embed the TOML in
+the output PDF so that re-editing needs only that one file: open the filled PDF,
+the tool finds the description inside it, and everything is back in place — no
+second file to keep track of, no description lost because it was never saved
+next to its PDF. The right mechanism is a PDF embedded file (an attachment, as
+both PyMuPDF and pdf-lib support), not metadata proper — XMP is not made for
+arbitrary payloads. Two things to settle before committing to it:
+
+- **Re-editing needs the blank source, not the filled output.** The output is
+  flattened; repainting over it would double every mark. Either the source PDF
+  is embedded alongside the TOML (size doubles, but the file becomes fully
+  self-contained), or the tool regenerates from a source the user still has.
+- **The description travels with the PDF.** Whoever receives the filled form
+  also receives the TOML — mostly the same data that is painted on the page,
+  but including notes and structure. Worth an explicit choice, or an option.
+
+This would complement the TOML-next-to-the-PDF convention, not replace it: the
+standalone file remains the diffable, hand-editable reference.
+
 ## License
 
 MIT
