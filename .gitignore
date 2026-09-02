@@ -5,3 +5,12 @@
 # Working PDFs: never in the repository
 *.pdf
 __pycache__/
+
+# Agent tooling and BMAD — fully ignored, output included. Raw BMAD output is
+# session material, not documentation: if a spec is worth keeping, it gets
+# extracted and consolidated into a real document under version control,
+# never committed as-is from _bmad-output/.
+.claude/
+_bmad/
+_bmad-output/
+.bmad-loop/
