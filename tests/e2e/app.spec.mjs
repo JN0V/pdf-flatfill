@@ -139,7 +139,12 @@ test.describe.serial('editing journey', () => {
   });
 
   test('an existing text edits: content, size, font', async () => {
+    // One click only selects — the popover stays closed, arrows may nudge.
     await page.locator('.placed', { hasText: 'DUPONT' }).click();
+    await expect(page.locator('#popover')).toBeHidden();
+    await expect(page.locator('.placed', { hasText: 'DUPONT' })).toHaveClass(/is-selected/);
+    // A double click opens the editor.
+    await page.locator('.placed', { hasText: 'DUPONT' }).dblclick();
     await expect(page.locator('#popover')).toBeVisible();
     await expect(page.locator('#popover-title')).toHaveText('Modifier le texte');
     await expect(page.locator('#popover-text')).toHaveValue('DUPONT');
@@ -184,9 +189,7 @@ test.describe.serial('editing journey', () => {
   });
 
   test('an image resizes by its handle', async () => {
-    await page.locator('.placed-image').click(); // selects and opens the editor
-    await expect(page.locator('#popover-title')).toHaveText('Modifier l’image');
-    await page.keyboard.press('Escape'); // selection stays, so does the handle
+    await page.locator('.placed-image').click(); // one click: select, show handle
     const handle = page.locator('.resize-handle');
     await expect(handle).toBeVisible();
     const box = await handle.boundingBox();
@@ -199,7 +202,7 @@ test.describe.serial('editing journey', () => {
   });
 
   test('the check mark changes style, an entry deletes from the popover', async () => {
-    await page.locator('.placed', { hasText: 'X' }).click();
+    await page.locator('.placed', { hasText: 'X' }).dblclick();
     await expect(page.locator('#popover-title')).toHaveText('Modifier la coche');
     // The free-text field stays hidden until the mark style is 'custom'.
     await expect(page.locator('#popover-text')).toBeHidden();
@@ -212,13 +215,13 @@ test.describe.serial('editing journey', () => {
     await page.click('.tool[data-tool="check"]');
     await page.click('#overlay', { position: { x: 500, y: 500 } });
     await expect(page.locator('.entry')).toHaveCount(5);
-    await page.locator('.placed', { hasText: 'X' }).click();
+    await page.locator('.placed', { hasText: 'X' }).dblclick();
     await page.selectOption('#popover-mark', 'custom');
     await expect(page.locator('#popover-text')).toBeVisible();
     await page.fill('#popover-text', 'V');
     await page.click('#popover-place');
     await expect(page.locator('.placed', { hasText: 'V' })).toBeVisible();
-    await page.locator('.placed', { hasText: 'V' }).click();
+    await page.locator('.placed', { hasText: 'V' }).dblclick();
     await page.click('#popover-delete');
     await expect(page.locator('.entry')).toHaveCount(4);
   });
@@ -480,7 +483,7 @@ test.describe('internationalization', () => {
       await page.click('#overlay', { position: { x: 200, y: 200 } });
       await page.fill('#popover-text', 'Test');
       await page.click('#popover-place');
-      await page.locator('.placed', { hasText: 'Test' }).click();
+      await page.locator('.placed', { hasText: 'Test' }).dblclick();
       await expect(page.locator('#popover-delete')).toBeVisible();
       expect(await page.evaluate(() => {
         const pop = document.getElementById('popover');
@@ -492,6 +495,19 @@ test.describe('internationalization', () => {
           // The footer holds ONE line: every button at the same level.
           && Math.max(...tops) - Math.min(...tops) <= 2;
       })).toBe(true);
+      await page.keyboard.press('Escape');
+
+      // The shortcut cheat sheet opens, fits, and closes with Escape.
+      await page.click('#help-open');
+      await expect(page.locator('#help')).toBeVisible();
+      await expect(page.locator('#help h2')).not.toBeEmpty();
+      await expect(page.locator('.help-row')).toHaveCount(5);
+      expect(await page.evaluate(() => {
+        const dialog = document.querySelector('#help .dialog');
+        return dialog.scrollWidth <= dialog.clientWidth + 1;
+      })).toBe(true);
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#help')).toBeHidden();
       await context.close();
     });
   }

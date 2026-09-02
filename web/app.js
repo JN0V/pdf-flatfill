@@ -115,6 +115,7 @@ const els = {
   fontPicker: $('font-picker'), fontPickerFilter: $('font-picker-filter'),
   fontPickerList: $('font-picker-list'), fontPickerCancel: $('font-picker-cancel'),
   doneFonts: $('done-fonts'),
+  help: $('help'),
   done: $('done'), doneSummary: $('done-summary'),
   donePdf: $('done-pdf'), donePdfName: $('done-pdf-name'),
   doneToml: $('done-toml'), doneTomlName: $('done-toml-name'),
@@ -489,10 +490,15 @@ function renderOverlay() {
     }
     if (index === state.selected) el.classList.add('is-selected');
     el.addEventListener('pointerdown', (event) => startDrag(event, index, 'move'));
+    // Drawing-app convention: one click selects (arrows then nudge it),
+    // a double click opens the editor.
     el.addEventListener('click', (event) => {
       event.stopPropagation();
       if (suppressClick) { suppressClick = false; return; }
       select(index);
+    });
+    el.addEventListener('dblclick', (event) => {
+      event.stopPropagation();
       openEditPopover(index);
     });
     els.overlay.appendChild(el);
@@ -1021,7 +1027,17 @@ function updatePanelCoords(index) {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closePopover();
+  if (e.key === 'Escape') {
+    if (!els.help.hidden) {
+      els.help.hidden = true;
+    } else if (!els.popover.hidden) {
+      closePopover();
+    } else if (state.selected !== null) {
+      state.selected = null;
+      renderOverlay();
+      updatePanelSelection();
+    }
+  }
   const editingField = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
   if ((e.key === 'Delete' || e.key === 'Backspace') && state.selected !== null
       && els.popover.hidden && !editingField) {
@@ -1342,6 +1358,10 @@ $('generate').addEventListener('click', async () => {
 
 $('done-close').addEventListener('click', () => { els.done.hidden = true; });
 els.done.addEventListener('click', (e) => { if (e.target === els.done) els.done.hidden = true; });
+
+$('help-open').addEventListener('click', () => { els.help.hidden = false; });
+$('help-close').addEventListener('click', () => { els.help.hidden = true; });
+els.help.addEventListener('click', (e) => { if (e.target === els.help) els.help.hidden = true; });
 
 // ---------------------------------------------------------------- file inputs
 
