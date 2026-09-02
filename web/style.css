@@ -73,6 +73,15 @@ button { font: inherit; cursor: pointer; }
   font-weight: 600; font-size: 15px; letter-spacing: -0.01em;
 }
 .home-source { font-size: 14px; color: var(--muted); }
+.home-header-right { display: flex; align-items: center; gap: 20px; }
+.lang-select {
+  font: inherit; font-size: 13px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 8px;
+  background: var(--surface);
+}
 
 .hero {
   flex-grow: 1;
@@ -381,7 +390,7 @@ button { font: inherit; cursor: pointer; }
 .popover {
   position: fixed;
   z-index: 20;
-  width: 268px;
+  width: 300px;
   display: flex; flex-direction: column; gap: 10px;
   padding: 14px;
   background: var(--surface);
@@ -415,7 +424,7 @@ button { font: inherit; cursor: pointer; }
   background: var(--surface);
   min-width: 0;
 }
-.popover-foot { display: flex; align-items: center; gap: 8px; }
+.popover-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .popover-spacer { flex-grow: 1; }
 .btn-danger { color: #C0392B; border-color: var(--border); }
 .btn-danger:hover { background: #FBEEEC; border-color: #E5B7B0; }

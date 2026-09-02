@@ -9,6 +9,7 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:8124',
     viewport: { width: 1440, height: 900 },
+    locale: 'fr-FR', // les scénarios vérifient les libellés français
   },
   webServer: {
     command: 'python3 -m http.server 8124 -d ../../web --bind 127.0.0.1',

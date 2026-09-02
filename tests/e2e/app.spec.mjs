@@ -162,20 +162,38 @@ test.describe.serial('parcours d’édition', () => {
     await expect(page.locator('.resize-handle')).toBeVisible();
   });
 
-  test('la coche s’édite, une entrée se supprime depuis le popover', async () => {
+  test('la coche change de style, une entrée se supprime depuis le popover', async () => {
     await page.locator('.placed', { hasText: 'X' }).click();
     await expect(page.locator('#popover-title')).toHaveText('Modifier la coche');
-    await page.fill('#popover-text', 'V');
+    // Le champ libre reste caché tant que le style n'est pas « Personnalisée ».
+    await expect(page.locator('#popover-text')).toBeHidden();
+    await page.selectOption('#popover-mark', 'check');
     await page.click('#popover-place');
-    await expect(page.locator('.placed', { hasText: 'V' })).toBeVisible();
+    await expect(page.locator('.placed', { hasText: '✓' })).toBeVisible();
+    await expect(page.locator('.entry', { hasText: '✓' })).toBeVisible();
 
+    // Marque personnalisée sur une coche jetable, puis suppression.
     await page.click('.tool[data-tool="check"]');
     await page.click('#overlay', { position: { x: 500, y: 500 } });
     await expect(page.locator('.entry')).toHaveCount(5);
     await page.locator('.placed', { hasText: 'X' }).click();
-    await expect(page.locator('#popover-title')).toHaveText('Modifier la coche');
+    await page.selectOption('#popover-mark', 'custom');
+    await expect(page.locator('#popover-text')).toBeVisible();
+    await page.fill('#popover-text', 'V');
+    await page.click('#popover-place');
+    await expect(page.locator('.placed', { hasText: 'V' })).toBeVisible();
+    await page.locator('.placed', { hasText: 'V' }).click();
     await page.click('#popover-delete');
     await expect(page.locator('.entry')).toHaveCount(4);
+  });
+
+  test('double-clic dans la liste : aller à l’entrée et l’éditer', async () => {
+    await page.locator('.entry', { hasText: 'DURAND' }).dblclick();
+    await expect(page.locator('#popover')).toBeVisible();
+    await expect(page.locator('#popover-title')).toHaveText('Modifier le texte');
+    await expect(page.locator('#popover-text')).toHaveValue('DURAND');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#popover')).toBeHidden();
   });
 
   test('le .toml exporté est fidèle', async () => {
@@ -194,7 +212,8 @@ test.describe.serial('parcours d’édition', () => {
       { page: 1, x: 100, y: 166.7, size: 13, font: 'tibo', text: 'DURAND', note: 'Nom' },
       { page: 1, x: 320, y: 176.7, text: 'Marie' },
     ]);
-    expect(form.check).toEqual([{ page: 1, x: 200, y: 266.7, mark: 'V' }]);
+    // La coche ✓ est un glyphe ZapfDingbats : mark « 3 » peint par « zadb ».
+    expect(form.check).toEqual([{ page: 1, x: 200, y: 266.7, mark: '3', font: 'zadb' }]);
     // Redimensionnée de +30/+30 px à 150 % : +20/+20 pt sur le coin bas droit.
     expect(form.image).toEqual([{ page: 1, rect: [400, 200, 550, 350], file: 'signature.png' }]);
   });
@@ -212,7 +231,6 @@ test.describe.serial('parcours d’édition', () => {
     const text = await extractPageText(readFileSync(`${ARTIFACTS}formulaire-rempli.pdf`), 1);
     expect(text).toContain('DURAND');
     expect(text).toContain('Marie');
-    expect(text).toContain('V');
 
     await page.click('#done-close');
     await expect(page.locator('#done')).toBeHidden();
@@ -247,4 +265,40 @@ test.describe.serial('reprise d’une description', () => {
     await expect(page.locator('#done')).toBeVisible();
     await expect(page.locator('#done-summary')).toHaveText('2 textes · 1 coche · 1 image, sur 4 pages');
   });
+});
+
+test.describe('internationalisation', () => {
+  for (const lang of ['fr', 'en', 'de', 'es', 'it']) {
+    test(`tout tient à l’écran en « ${lang} »`, async ({ browser }) => {
+      const context = await browser.newContext({
+        locale: lang, viewport: { width: 1440, height: 900 },
+      });
+      const page = await context.newPage();
+      await page.goto('/');
+      await expect(page.locator('html')).toHaveAttribute('lang', lang);
+      await expect(page.locator('h1')).not.toBeEmpty();
+      expect(await page.evaluate(() => document.body.scrollWidth <= window.innerWidth)).toBe(true);
+
+      await page.setInputFiles('#file-input', pdfPath);
+      await expect(page.locator('#editor')).toBeVisible();
+      expect(await page.evaluate(() => {
+        const bar = document.querySelector('.topbar');
+        return bar.scrollWidth <= bar.clientWidth + 1;
+      })).toBe(true);
+
+      // Le pire cas du popover : le mode édition et ses trois boutons.
+      await page.click('#overlay', { position: { x: 200, y: 200 } });
+      await page.fill('#popover-text', 'Test');
+      await page.click('#popover-place');
+      await page.locator('.placed', { hasText: 'Test' }).click();
+      await expect(page.locator('#popover-delete')).toBeVisible();
+      expect(await page.evaluate(() => {
+        const pop = document.getElementById('popover');
+        const foot = pop.querySelector('.popover-foot');
+        return pop.scrollWidth <= pop.clientWidth + 1
+          && foot.getBoundingClientRect().right <= pop.getBoundingClientRect().right + 1;
+      })).toBe(true);
+      await context.close();
+    });
+  }
 });

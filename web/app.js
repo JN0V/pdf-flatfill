@@ -10,6 +10,7 @@
 
 import * as pdfjsLib from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs';
 import { parse as parseToml } from 'https://cdn.jsdelivr.net/npm/smol-toml@1.3.1/+esm';
+import { t, tn, setLang, applyStatic } from './i18n.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs';
@@ -26,7 +27,36 @@ const FONT_MAP = {
   helv: 'Helvetica', hebo: 'Helvetica-Bold', heit: 'Helvetica-Oblique', hebi: 'Helvetica-BoldOblique',
   cour: 'Courier', cobo: 'Courier-Bold', coit: 'Courier-Oblique', cobi: 'Courier-BoldOblique',
   tiro: 'Times-Roman', tibo: 'Times-Bold', tiit: 'Times-Italic', tibi: 'Times-BoldItalic',
+  symb: 'Symbol', zadb: 'ZapfDingbats',
 };
+
+// Styles de coche : ZapfDingbats (« zadb », l'une des 14 polices standard)
+// fournit de vrais glyphes — le TOML porte le caractère source, l'écran
+// affiche son équivalent Unicode.
+const MARK_PRESETS = {
+  x: {},
+  check: { mark: '3', font: 'zadb' },
+  cross: { mark: '7', font: 'zadb' },
+  bullet: { mark: 'l', font: 'zadb' },
+};
+const ZAPF_DISPLAY = {
+  3: '✓', 4: '✔', 5: '✕', 6: '✖', 7: '✗', 8: '✘', l: '●', n: '■',
+};
+
+function markDisplay(entry) {
+  const raw = entry.mark ?? 'X';
+  return entry.font === 'zadb' ? (ZAPF_DISPLAY[raw] ?? raw) : raw;
+}
+
+function markPresetOf(entry) {
+  if (entry.font === 'zadb') {
+    for (const [key, preset] of Object.entries(MARK_PRESETS)) {
+      if (preset.mark === entry.mark) return key;
+    }
+    return 'custom';
+  }
+  return (entry.mark === undefined || entry.mark === 'X') ? 'x' : 'custom';
+}
 
 // Rendu approchant de ces mêmes polices pour la surcouche d'édition.
 const FONT_CSS = {
@@ -73,6 +103,7 @@ const els = {
   popoverSize: $('popover-size'), popoverFont: $('popover-font'),
   popoverStyleRow: $('popover-style-row'), popoverDelete: $('popover-delete'),
   popoverPlace: $('popover-place'),
+  popoverMarkRow: $('popover-mark-row'), popoverMark: $('popover-mark'),
   done: $('done'), doneSummary: $('done-summary'),
   donePdf: $('done-pdf'), donePdfName: $('done-pdf-name'),
   doneToml: $('done-toml'), doneTomlName: $('done-toml-name'),
@@ -102,19 +133,19 @@ async function handleFiles(files) {
     try {
       loadDescription(await toml.text());
     } catch (err) {
-      alert(`Description illisible : ${err.message}`);
+      alert(t('badToml', { msg: err.message }));
     }
   }
   for (const file of images) await attachImageFile(file);
 
   if (!state.pdfDoc) {
-    if (toml || images.length) alert('Il manque le PDF : déposez aussi le formulaire lui-même.');
+    if (toml || images.length) alert(t('needPdf'));
     return;
   }
   els.home.hidden = true;
   els.editor.hidden = false;
   els.fileName.textContent = state.sourceName;
-  els.filePages.textContent = `${state.pdfDoc.numPages} page${state.pdfDoc.numPages > 1 ? 's' : ''}`;
+  els.filePages.textContent = tn(state.pdfDoc.numPages, 'page');
   els.pageCount.textContent = state.pdfDoc.numPages;
   await render();
   renderPanel();
@@ -249,7 +280,7 @@ function renderOverlay() {
     } else {
       el = document.createElement('div');
       el.className = 'placed';
-      el.textContent = entry.kind === 'check' ? (entry.mark ?? 'X') : entry.text;
+      el.textContent = entry.kind === 'check' ? markDisplay(entry) : entry.text;
       const size = entry.size ?? state.style.size;
       const [family, weight, fontStyle] = FONT_CSS[entry.font ?? state.style.font] ?? FONT_CSS[DEFAULT_FONT];
       Object.assign(el.style, {
@@ -387,11 +418,11 @@ function renderPanel() {
       label.textContent = entry.text;
       note.textContent = entry.note ?? '';
     } else if (entry.kind === 'check') {
-      label.textContent = 'Case cochée';
+      label.textContent = `${t('checkEntry')} ${markDisplay(entry)}`;
       note.textContent = entry.note ?? '';
     } else {
       label.textContent = entry.file ?? 'image';
-      note.textContent = entry.image ? (entry.note ?? '') : 'image manquante — cliquer pour joindre';
+      note.textContent = entry.image ? (entry.note ?? '') : t('missingImage');
       if (!entry.image) note.classList.add('entry-missing');
     }
     main.append(label, note);
@@ -421,8 +452,27 @@ function renderPanel() {
       }
       select(index);
     });
+    // Double-clic : aller à l'entrée sur la page et l'éditer directement.
+    li.addEventListener('dblclick', () => {
+      if (entry.kind === 'image' && !entry.image) return;
+      openEntry(index);
+    });
     els.entryList.appendChild(li);
   });
+}
+
+// Sélectionne une entrée, change de page s'il le faut, puis ouvre l'édition.
+async function openEntry(index) {
+  const entry = state.entries[index];
+  state.selected = index;
+  if (entry.page !== state.page) {
+    state.page = entry.page;
+    await render();
+  } else {
+    renderOverlay();
+  }
+  renderPanel();
+  openEditPopover(index);
 }
 
 function removeEntry(index) {
@@ -465,9 +515,9 @@ els.overlay.addEventListener('click', (event) => {
 
   popCtx = { mode: 'new-text', x, y };
   fillPopover({
-    title: 'Nouveau texte', coords: `p.${state.page} · x ${fmt(round1(x))} · y ${fmt(round1(y))}`,
-    text: '', textPlaceholder: 'Texte à poser', showText: true, showStyle: true,
-    note: '', size: state.style.size, font: '', deletable: false, action: 'Placer',
+    title: t('newText'), coords: `p.${state.page} · x ${fmt(round1(x))} · y ${fmt(round1(y))}`,
+    text: '', textPlaceholder: t('textPh'), showText: true, showStyle: true,
+    note: '', size: state.style.size, font: '', deletable: false, action: t('place'),
   });
   positionPopover(event.clientX + 12, event.clientY + 12);
 });
@@ -478,24 +528,28 @@ function openEditPopover(index) {
   // doit pas être perdue si l'utilisateur ne touche pas au champ.
   popCtx = { mode: 'edit', index, origFont: entry.font };
   const common = {
-    note: entry.note ?? '', deletable: true, action: 'Enregistrer',
+    note: entry.note ?? '', deletable: true, action: t('save'),
     size: entry.size ?? state.style.size, font: entry.font ?? '',
   };
   if (entry.kind === 'text') {
     fillPopover({
-      ...common, title: 'Modifier le texte',
+      ...common, title: t('editText'),
       coords: `p.${entry.page} · x ${fmt(entry.x)} · y ${fmt(entry.y)}`,
-      text: entry.text, textPlaceholder: 'Texte à poser', showText: true, showStyle: true,
+      text: entry.text, textPlaceholder: t('textPh'), showText: true, showStyle: true,
     });
   } else if (entry.kind === 'check') {
+    const preset = markPresetOf(entry);
     fillPopover({
-      ...common, title: 'Modifier la coche',
+      ...common, title: t('editCheck'),
       coords: `p.${entry.page} · x ${fmt(entry.x)} · y ${fmt(entry.y)}`,
-      text: entry.mark ?? '', textPlaceholder: 'Marque — « X » par défaut', showText: true, showStyle: true,
+      text: preset === 'custom' ? (entry.mark ?? '') : '',
+      textPlaceholder: t('markCustomPh'),
+      showText: preset === 'custom', showStyle: true, showFont: false,
+      markPreset: preset,
     });
   } else {
     fillPopover({
-      ...common, title: 'Modifier l’image',
+      ...common, title: t('editImage'),
       coords: `p.${entry.page} · rect`,
       text: '', showText: false, showStyle: false,
     });
@@ -514,13 +568,24 @@ function fillPopover(cfg) {
   els.popoverText.value = cfg.text;
   els.popoverText.placeholder = cfg.textPlaceholder ?? '';
   els.popoverNote.value = cfg.note;
+  els.popoverNote.placeholder = t('notePh');
   els.popoverStyleRow.hidden = !cfg.showStyle;
   els.popoverSize.value = cfg.size;
+  els.popoverFont.hidden = cfg.showFont === false;
   els.popoverFont.value = cfg.font;
   if (els.popoverFont.value !== cfg.font) els.popoverFont.value = '';
+  els.popoverMarkRow.hidden = cfg.markPreset === undefined;
+  if (cfg.markPreset !== undefined) els.popoverMark.value = cfg.markPreset;
   els.popoverDelete.hidden = !cfg.deletable;
   els.popoverPlace.textContent = cfg.action;
 }
+
+// Style de coche : « Personnalisée… » révèle le champ libre.
+els.popoverMark.addEventListener('change', () => {
+  const custom = els.popoverMark.value === 'custom';
+  els.popoverText.hidden = !custom;
+  if (custom) els.popoverText.focus();
+});
 
 function positionPopover(clientX, clientY) {
   els.popover.hidden = false;
@@ -557,9 +622,19 @@ function submitPopover() {
       entry.text = value;
       applyStyleFields(entry, { note, size, font });
     } else if (entry.kind === 'check') {
-      const mark = value.trim();
-      if (mark && mark !== 'X') entry.mark = mark; else delete entry.mark;
-      applyStyleFields(entry, { note, size, font });
+      const preset = els.popoverMark.value;
+      if (preset === 'custom') {
+        const mark = value.trim();
+        if (mark && mark !== 'X') entry.mark = mark; else delete entry.mark;
+        if (entry.font === 'zadb') delete entry.font;
+      } else if (preset === 'x') {
+        delete entry.mark;
+        if (entry.font === 'zadb') delete entry.font;
+      } else {
+        entry.mark = MARK_PRESETS[preset].mark;
+        entry.font = 'zadb';
+      }
+      applyStyleFields(entry, { note, size });
     } else {
       if (note) entry.note = note; else delete entry.note;
     }
@@ -571,9 +646,11 @@ function submitPopover() {
 }
 
 // Les champs égaux au style par défaut ne sont pas répétés dans le TOML.
+// `font` absent = ne pas y toucher (les coches gèrent la leur via le preset).
 function applyStyleFields(entry, { note, size, font }) {
   if (note) entry.note = note; else delete entry.note;
   if (size !== state.style.size) entry.size = size; else delete entry.size;
+  if (font === undefined) return;
   if (font && font !== state.style.font) entry.font = font; else delete entry.font;
 }
 
@@ -733,12 +810,11 @@ function download(blob, name) {
 $('generate').addEventListener('click', async () => {
   const missing = state.entries.filter((e) => e.kind === 'image' && !e.image);
   if (missing.length) {
-    alert(`Image(s) manquante(s) : ${missing.map((e) => e.file).join(', ')}.\n`
-      + 'Cliquez sur ces entrées dans le panneau pour joindre les fichiers.');
+    alert(`${t('missingList', { list: missing.map((e) => e.file).join(', ') })}\n${t('missingHelp')}`);
     return;
   }
   if (!state.entries.length) {
-    alert('Rien à poser : placez au moins un texte, une coche ou une image.');
+    alert(t('empty'));
     return;
   }
 
@@ -756,7 +832,7 @@ $('generate').addEventListener('click', async () => {
   for (const entry of state.entries) {
     const page = pages[entry.page - 1];
     if (!page) {
-      alert(`Une entrée vise la page ${entry.page}, mais le PDF n'en a que ${pages.length}.`);
+      alert(t('pageRange', { page: entry.page, count: pages.length }));
       return;
     }
     const pageHeight = page.getHeight();
@@ -776,7 +852,10 @@ $('generate').addEventListener('click', async () => {
         width: w, height: h,
       });
     } else {
-      page.drawText(entry.kind === 'check' ? (entry.mark ?? 'X') : entry.text, {
+      // Pour ZapfDingbats, pdf-lib encode depuis l'Unicode (« ✓ » -> octet
+      // 0x33) là où PyMuPDF prend l'octet brut (« 3 ») : le TOML garde
+      // l'octet brut du moteur, la traduction se fait ici.
+      page.drawText(entry.kind === 'check' ? markDisplay(entry) : entry.text, {
         x: entry.x,
         y: pageHeight - entry.y, // y TOML : ligne de base depuis le HAUT
         size: entry.size ?? state.style.size,
@@ -800,10 +879,8 @@ $('generate').addEventListener('click', async () => {
   const counts = { text: 0, check: 0, image: 0 };
   for (const entry of state.entries) counts[entry.kind] += 1;
   els.doneSummary.textContent =
-    `${counts.text} texte${counts.text > 1 ? 's' : ''}`
-    + ` · ${counts.check} coche${counts.check > 1 ? 's' : ''}`
-    + ` · ${counts.image} image${counts.image > 1 ? 's' : ''}`
-    + `, sur ${pages.length} page${pages.length > 1 ? 's' : ''}`;
+    `${tn(counts.text, 'text')} · ${tn(counts.check, 'check')} · ${tn(counts.image, 'image')}`
+    + `, ${t('across')} ${tn(pages.length, 'page')}`;
   els.done.hidden = false;
 });
 
@@ -834,3 +911,18 @@ els.dropzone.addEventListener('drop', (e) => {
   els.dropzone.classList.remove('is-over');
   handleFiles([...e.dataTransfer.files]);
 });
+
+// ---------------------------------------------------------------- langue
+
+document.querySelectorAll('.lang-select').forEach((select) => {
+  select.addEventListener('change', (e) => {
+    setLang(e.target.value);
+    closePopover();
+    if (state.pdfDoc) {
+      els.filePages.textContent = tn(state.pdfDoc.numPages, 'page');
+      renderPanel();
+    }
+  });
+});
+
+applyStatic();

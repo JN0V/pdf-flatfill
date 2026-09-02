@@ -150,6 +150,8 @@ x = 96
 y = 332
 note = "Ms. checkbox"
 # mark = "X"               # another mark if needed
+# mark = "3"               # with font = "zadb" (ZapfDingbats): a real check
+# font = "zadb"            # glyph — "3" ✓, "7" ✗, "l" a filled dot
 
 [[image]]
 page = 4
@@ -179,6 +181,10 @@ to place text, check marks and images, download the filled PDF and its
 description. Everything runs client-side — pdf.js renders the page, pdf-lib
 paints the output — so no byte ever leaves the browser, which is the point for
 forms full of personal data.
+
+The interface speaks French, English, German, Spanish and Italian — detected
+from the browser, switchable in the app. Only the interface: the TOML format
+stays language-neutral.
 
 It is plain static files with pinned CDN dependencies, no build step. Serve it
 any way you like:
