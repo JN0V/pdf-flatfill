@@ -271,6 +271,27 @@ test.describe.serial('reprise d’une description', () => {
     await page.click('#generate');
     await expect(page.locator('#done')).toBeVisible();
     await expect(page.locator('#done-summary')).toHaveText('2 textes · 1 coche · 1 image, sur 4 pages');
+    await page.click('#done-close');
+
+    // Chaque valeur est revenue : le popover de DURAND montre sa taille et
+    // sa police propres, la ligne de Marie ses coordonnées déplacées.
+    await page.locator('.entry', { hasText: 'DURAND' }).dblclick();
+    await expect(page.locator('#popover-text')).toHaveValue('DURAND');
+    await expect(page.locator('#popover-size')).toHaveValue('13');
+    await expect(page.locator('#popover-font')).toHaveValue('tibo');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.entry', { hasText: 'Marie' }).locator('.entry-coords'))
+      .toHaveText('p1 · 320,176.7');
+
+    // L'épreuve complète : export -> rechargement -> ré-export doit rendre
+    // un .toml identique octet pour octet.
+    const [again] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#export-toml'),
+    ]);
+    await again.saveAs(`${ARTIFACTS}formulaire-2.toml`);
+    expect(readFileSync(`${ARTIFACTS}formulaire-2.toml`, 'utf8'))
+      .toBe(readFileSync(`${ARTIFACTS}formulaire.toml`, 'utf8'));
   });
 });
 

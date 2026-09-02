@@ -777,7 +777,11 @@ function serializeToml() {
   out.push(`font = ${tomlString(state.style.font)}`);
   out.push(`size = ${fmt(state.style.size)}`);
 
-  for (const entry of state.entries) {
+  // Groupées par type, comme à la lecture : export -> import -> export
+  // redonne le même fichier à l'octet près.
+  const grouped = ['text', 'check', 'image']
+    .flatMap((kind) => state.entries.filter((e) => e.kind === kind));
+  for (const entry of grouped) {
     out.push('');
     out.push(`[[${entry.kind}]]`);
     out.push(`page = ${entry.page}`);
