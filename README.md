@@ -201,7 +201,7 @@ output = "filled-form.pdf"
 
 [style]
 ink  = [0.05, 0.15, 0.7]   # RGB from 0 to 1 — ink blue
-font = "helv"              # defaults, both overridable entry by entry
+font = "helv"              # defaults, all three overridable entry by entry
 size = 10                  # (font takes PyMuPDF base-14 names: helv, tiro, cour, tibo…)
 # font = "Homemade Apple"  # any font, from a file living next to this
 # fontfile = "homemade-apple.woff"  # description — TTF, OTF or WOFF
@@ -213,6 +213,7 @@ y = 230
 size = 11
 text = "DOE"
 note = "Last name"         # ignored by the tool, there to re-read yourself
+# ink = [0.8, 0, 0]                 # this one entry in red
 # font = "Homemade Apple"           # a signature wants a handwriting font;
 # fontfile = "homemade-apple.woff"  # fontfile works per entry too
 

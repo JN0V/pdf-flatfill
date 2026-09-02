@@ -106,7 +106,7 @@ const els = {
   entryList: $('entry-list'), entryCount: $('entry-count'),
   popover: $('popover'), popoverTitle: $('popover-title'), popoverCoords: $('popover-coords'),
   popoverText: $('popover-text'), popoverNote: $('popover-note'),
-  popoverSize: $('popover-size'), popoverFont: $('popover-font'),
+  popoverSize: $('popover-size'), popoverFont: $('popover-font'), popoverInk: $('popover-ink'),
   popoverStyleRow: $('popover-style-row'), popoverDelete: $('popover-delete'),
   popoverPlace: $('popover-place'),
   popoverMarkRow: $('popover-mark-row'), popoverMark: $('popover-mark'),
@@ -138,6 +138,7 @@ async function registerFont(family, bytes, fileName) {
     } catch { /* the overlay falls back; the PDF still embeds the bytes */ }
   }
   refreshFontSelects();
+  metricsCache.clear(); // measurements made with the fallback face are stale
   if (state.pdfDoc) renderOverlay();
   return family;
 }
@@ -339,6 +340,7 @@ function loadDescription(text) {
     state.entries.push({
       kind: 'text', page: entry.page, x: entry.x, y: entry.y,
       text: String(entry.text ?? ''), size: entry.size,
+      ink: Array.isArray(entry.ink) ? entry.ink.map(Number) : undefined,
       font: entry.fontfile ? placeholderFont(entry.font, entry.fontfile) : entry.font,
       note: entry.note,
     });
@@ -347,6 +349,7 @@ function loadDescription(text) {
     state.entries.push({
       kind: 'check', page: entry.page, x: entry.x, y: entry.y,
       mark: entry.mark, size: entry.size,
+      ink: Array.isArray(entry.ink) ? entry.ink.map(Number) : undefined,
       font: entry.fontfile ? placeholderFont(entry.font, entry.fontfile) : entry.font,
       note: entry.note,
     });
@@ -463,11 +466,16 @@ function renderOverlay() {
       el.textContent = entry.kind === 'check' ? markDisplay(entry) : entry.text;
       const size = entry.size ?? state.style.size;
       const [family, weight, fontStyle] = fontStyleOf(entry.font ?? state.style.font);
+      const sizePx = size * s;
+      const { ascent, descent } = fontMetrics(sizePx, family, weight, fontStyle);
       Object.assign(el.style, {
-        left: `${entry.x * s}px`, top: `${entry.y * s}px`,
-        fontSize: `${size * s}px`,
+        left: `${entry.x * s}px`,
+        top: `${entry.y * s - ascent}px`,
+        fontSize: `${sizePx}px`,
+        // Zero half-leading: the baseline sits exactly `ascent` below the top.
+        lineHeight: `${ascent + descent}px`,
         fontFamily: family, fontWeight: weight, fontStyle,
-        color: cssInk(state.style.ink),
+        color: cssInk(entry.ink ?? state.style.ink),
       });
     }
     if (index === state.selected) el.classList.add('is-selected');
@@ -486,6 +494,24 @@ function fontStyleOf(code) {
   if (FONT_CSS[code]) return FONT_CSS[code];
   if (customFonts.has(code)) return [`"${code}", Helvetica, sans-serif`, 400, 'normal'];
   return FONT_CSS[DEFAULT_FONT];
+}
+
+// Real font metrics, so the overlay puts the BASELINE exactly at y — the
+// same anchor both PDF engines use. An approximation here made generated
+// text land higher than the preview showed it.
+const measureCtx = document.createElement('canvas').getContext('2d');
+const metricsCache = new Map();
+function fontMetrics(sizePx, family, weight, fontStyle) {
+  const key = `${fontStyle} ${weight} ${sizePx}px ${family}`;
+  if (!metricsCache.has(key)) {
+    measureCtx.font = key;
+    const m = measureCtx.measureText('Hg');
+    metricsCache.set(key, {
+      ascent: m.fontBoundingBoxAscent ?? sizePx * 0.8,
+      descent: m.fontBoundingBoxDescent ?? sizePx * 0.2,
+    });
+  }
+  return metricsCache.get(key);
 }
 
 function cssInk([r, g, b]) {
@@ -521,13 +547,16 @@ function startDrag(event, index, mode) {
   if (event.button !== 0) return;
   event.preventDefault();
   const entry = state.entries[index];
+  const el = mode === 'resize' ? event.currentTarget.parentElement : event.currentTarget;
   dragging = {
     index, mode,
     // The dragged element: updated in place during the gesture (no rebuild,
     // which would destroy the node and lose the final click).
-    el: mode === 'resize' ? event.currentTarget.parentElement : event.currentTarget,
+    el,
     startX: event.clientX, startY: event.clientY,
     orig: entry.kind === 'image' ? { rect: [...entry.rect] } : { x: entry.x, y: entry.y },
+    // Text sits `ascent` above its baseline anchor; keep that offset stable.
+    topOffset: entry.kind === 'image' ? 0 : entry.y * state.scale - parseFloat(el.style.top),
     moved: false,
   };
   window.addEventListener('pointermove', onDragMove);
@@ -560,7 +589,7 @@ function onDragMove(event) {
     entry.x = dragging.orig.x + dx;
     entry.y = dragging.orig.y + dy;
     el.style.left = `${entry.x * s}px`;
-    el.style.top = `${entry.y * s}px`;
+    el.style.top = `${entry.y * s - dragging.topOffset}px`;
   }
 }
 
@@ -711,7 +740,8 @@ els.overlay.addEventListener('click', (event) => {
   fillPopover({
     title: t('newText'), coords: `p.${state.page} · x ${fmt(round1(x))} · y ${fmt(round1(y))}`,
     text: '', textPlaceholder: t('textPh'), showText: true, showStyle: true,
-    note: '', size: state.style.size, font: '', deletable: false, action: t('place'),
+    note: '', size: state.style.size, font: '', ink: state.style.ink,
+    deletable: false, action: t('place'),
   });
   positionPopover(event.clientX + 12, event.clientY + 12);
 });
@@ -724,6 +754,7 @@ function openEditPopover(index) {
   const common = {
     note: entry.note ?? '', deletable: true, action: t('save'),
     size: entry.size ?? state.style.size, font: entry.font ?? '',
+    ink: entry.ink ?? state.style.ink,
   };
   if (entry.kind === 'text') {
     fillPopover({
@@ -765,6 +796,7 @@ function fillPopover(cfg) {
   els.popoverNote.placeholder = t('notePh');
   els.popoverStyleRow.hidden = !cfg.showStyle;
   els.popoverSize.value = cfg.size;
+  els.popoverInk.value = inkToHex(cfg.ink ?? state.style.ink);
   els.popoverFont.hidden = cfg.showFont === false;
   els.popoverFont.value = cfg.font;
   if (els.popoverFont.value !== cfg.font) els.popoverFont.value = '';
@@ -800,6 +832,7 @@ function submitPopover() {
   const value = els.popoverText.value;
   const note = els.popoverNote.value.trim();
   const size = Number(els.popoverSize.value) || state.style.size;
+  const ink = hexToInk(els.popoverInk.value);
   let font = els.popoverFont.value;
   const listed = [...els.popoverFont.options].some((o) => o.value === popCtx.origFont);
   if (!font && popCtx.origFont && !listed) font = popCtx.origFont;
@@ -807,7 +840,7 @@ function submitPopover() {
   if (popCtx.mode === 'new-text') {
     if (!value) return;
     const entry = { kind: 'text', page: state.page, x: round1(popCtx.x), y: round1(popCtx.y), text: value };
-    applyStyleFields(entry, { note, size, font });
+    applyStyleFields(entry, { note, size, font, ink });
     state.entries.push(entry);
     state.selected = state.entries.length - 1;
   } else if (popCtx.mode === 'edit') {
@@ -815,7 +848,7 @@ function submitPopover() {
     if (entry.kind === 'text') {
       if (!value) return;
       entry.text = value;
-      applyStyleFields(entry, { note, size, font });
+      applyStyleFields(entry, { note, size, font, ink });
     } else if (entry.kind === 'check') {
       const preset = els.popoverMark.value;
       if (preset === 'custom') {
@@ -829,7 +862,7 @@ function submitPopover() {
         entry.mark = MARK_PRESETS[preset].mark;
         entry.font = 'zadb';
       }
-      applyStyleFields(entry, { note, size });
+      applyStyleFields(entry, { note, size, ink });
     } else {
       if (note) entry.note = note; else delete entry.note;
     }
@@ -842,9 +875,11 @@ function submitPopover() {
 
 // Fields equal to the default style are not repeated in the TOML.
 // `font` absent = leave it alone (checks manage theirs via the preset).
-function applyStyleFields(entry, { note, size, font }) {
+function applyStyleFields(entry, { note, size, font, ink }) {
   if (note) entry.note = note; else delete entry.note;
   if (size !== state.style.size) entry.size = size; else delete entry.size;
+  if (ink && inkToHex(ink) !== inkToHex(state.style.ink)) entry.ink = ink;
+  else if (ink) delete entry.ink;
   if (font === undefined) return;
   if (font && font !== state.style.font) entry.font = font; else delete entry.font;
 }
@@ -1022,6 +1057,7 @@ function serializeToml() {
     } else {
       out.push(`x = ${fmt(entry.x)}`);
       out.push(`y = ${fmt(entry.y)}`);
+      if (entry.ink !== undefined) out.push(`ink = [${entry.ink.map(String).join(', ')}]`);
       if (entry.size !== undefined) out.push(`size = ${fmt(entry.size)}`);
       if (entry.font !== undefined) {
         out.push(`font = ${tomlString(entry.font)}`);
@@ -1081,7 +1117,6 @@ $('generate').addEventListener('click', async () => {
   const { PDFDocument, rgb } = PDFLib;
   const doc = await PDFDocument.load(state.pdfBytes);
   const pages = doc.getPages();
-  const ink = rgb(...state.style.ink);
   const fonts = new Map();
   let fontkitReady = false;
   const getFont = async (code) => {
@@ -1131,7 +1166,7 @@ $('generate').addEventListener('click', async () => {
         y: pageHeight - entry.y, // TOML y: baseline from the TOP
         size: entry.size ?? state.style.size,
         font: await getFont(entry.font ?? state.style.font),
-        color: ink,
+        color: rgb(...(entry.ink ?? state.style.ink)),
       });
     }
   }

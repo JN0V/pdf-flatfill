@@ -238,11 +238,12 @@ button { font: inherit; cursor: pointer; }
   color: var(--ink);
   font-family: Helvetica, Arial, sans-serif;
   white-space: pre;
-  transform: translateY(-0.78em);
   border: 1.5px solid transparent;
   border-radius: 4px;
-  padding: 1px 3px;
-  margin: -1px -3px;
+  /* The negative margin exactly cancels border + padding, so the glyphs'
+     origin sits at (left, top) — the baseline math in JS depends on it. */
+  padding: 2px 4px;
+  margin: -3.5px -5.5px;
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -431,6 +432,14 @@ button { font: inherit; cursor: pointer; }
   box-shadow: 0 0 0 3px rgba(29, 53, 196, 0.12);
 }
 .popover-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.popover-row input[type="color"] {
+  width: 32px; height: 28px;
+  padding: 2px; flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  cursor: pointer;
+}
 .popover-row select {
   flex-grow: 1;
   font: inherit; font-size: 12.5px;

@@ -189,7 +189,7 @@ def main():
                 fitz.Point(entry["x"], entry["y"]),
                 str(entry["text"]),
                 fontsize=entry.get("size", base_size),
-                color=ink,
+                color=tuple(entry.get("ink", ink)),
                 **fargs,
             )
 
@@ -202,7 +202,7 @@ def main():
                 fitz.Point(entry["x"], entry["y"]),
                 entry.get("mark", "X"),
                 fontsize=entry.get("size", base_size),
-                color=ink,
+                color=tuple(entry.get("ink", ink)),
                 **fargs,
             )
 

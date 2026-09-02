@@ -60,6 +60,21 @@ test.describe.serial('editing journey', () => {
     await expect(page.locator('.entry')).toHaveCount(1);
     await expect(page.locator('.entry-coords')).toHaveText('p1 · 100,166.7');
     await expect(page.locator('.entry-note').first()).toHaveText('Nom');
+
+    // The overlay must anchor the BASELINE at y, like both PDF engines do:
+    // content top + measured ascent = y × scale, to the pixel.
+    const baseline = await page.evaluate(() => {
+      const el = document.querySelector('.placed');
+      const overlay = document.getElementById('overlay').getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      const ctx = document.createElement('canvas').getContext('2d');
+      ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      const ascent = ctx.measureText('Hg').fontBoundingBoxAscent;
+      const contentTop = el.getBoundingClientRect().top
+        + parseFloat(cs.borderTopWidth) + parseFloat(cs.paddingTop);
+      return contentTop + ascent - overlay.top;
+    });
+    expect(Math.abs(baseline - 166.7 * 1.5)).toBeLessThan(1.5);
   });
 
   test('a check mark places, deletes, places again', async () => {
@@ -133,11 +148,14 @@ test.describe.serial('editing journey', () => {
     await page.fill('#popover-text', 'DURAND');
     await page.fill('#popover-size', '13');
     await page.selectOption('#popover-font', 'tibo');
+    // Per-entry ink: this one entry turns red, independent of the default.
+    await page.fill('#popover-ink', '#c0392b');
     await page.click('#popover-place');
     await expect(page.locator('#popover')).toBeHidden();
     const edited = page.locator('.placed', { hasText: 'DURAND' });
     await expect(edited).toBeVisible();
     await expect(edited).toHaveCSS('font-weight', '700');
+    await expect(edited).toHaveCSS('color', 'rgb(192, 57, 43)');
     await expect(page.locator('.entry-text').first()).toHaveText('DURAND');
   });
 
@@ -226,7 +244,7 @@ test.describe.serial('editing journey', () => {
     expect(form.output).toBe('formulaire-rempli.pdf');
     expect(form.style).toEqual({ ink: [0, 0, 0], font: 'helv', size: 12 });
     expect(form.text).toEqual([
-      { page: 1, x: 100, y: 166.7, size: 13, font: 'tibo', text: 'DURAND', note: 'Nom' },
+      { page: 1, x: 100, y: 166.7, ink: [0.753, 0.224, 0.169], size: 13, font: 'tibo', text: 'DURAND', note: 'Nom' },
       { page: 1, x: 320, y: 176.7, text: 'Marie' },
     ]);
     // The ✓ check is a ZapfDingbats glyph: mark "3" painted by "zadb".
@@ -289,6 +307,7 @@ test.describe.serial('resuming a description', () => {
     await expect(page.locator('#popover-text')).toHaveValue('DURAND');
     await expect(page.locator('#popover-size')).toHaveValue('13');
     await expect(page.locator('#popover-font')).toHaveValue('tibo');
+    await expect(page.locator('#popover-ink')).toHaveValue('#c0392b');
     await page.keyboard.press('Escape');
     await expect(page.locator('.entry', { hasText: 'Marie' }).locator('.entry-coords'))
       .toHaveText('p1 · 320,176.7');
