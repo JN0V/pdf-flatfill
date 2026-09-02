@@ -424,10 +424,18 @@ button { font: inherit; cursor: pointer; }
   background: var(--surface);
   min-width: 0;
 }
-.popover-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Une seule ligne, dans toutes les langues : la suppression est une icône. */
+.popover-foot { display: flex; align-items: center; gap: 8px; }
 .popover-spacer { flex-grow: 1; }
-.btn-danger { color: #C0392B; border-color: var(--border); }
-.btn-danger:hover { background: #FBEEEC; border-color: #E5B7B0; }
+.btn-icon-danger {
+  width: 30px; height: 30px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: #C0392B;
+}
+.btn-icon-danger:hover { background: #FBEEEC; border-color: #E5B7B0; }
 .popover-size {
   display: flex; align-items: center; gap: 6px;
   font-size: 12px; color: var(--muted);

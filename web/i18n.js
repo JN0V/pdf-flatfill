@@ -254,6 +254,7 @@ export function applyStatic() {
   }
   for (const el of document.querySelectorAll('[data-i18n-aria]')) {
     el.setAttribute('aria-label', t(el.dataset.i18nAria));
+    el.title = t(el.dataset.i18nAria);
   }
   for (const select of document.querySelectorAll('.lang-select')) {
     select.value = lang;

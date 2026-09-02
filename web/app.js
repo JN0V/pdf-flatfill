@@ -311,11 +311,19 @@ function select(index) {
   const entry = state.entries[index];
   if (entry && entry.page !== state.page) {
     state.page = entry.page;
-    render().then(renderPanel);
+    render().then(updatePanelSelection);
     return;
   }
   renderOverlay();
-  renderPanel();
+  // Surtout ne pas reconstruire la liste : un double-clic en cours perdrait
+  // son nœud entre les deux clics (et l'édition ne s'ouvrirait jamais).
+  updatePanelSelection();
+}
+
+function updatePanelSelection() {
+  [...els.entryList.children].forEach((li, index) => {
+    li.classList.toggle('is-selected', index === state.selected);
+  });
 }
 
 // ---------------------------------------------------------------- déplacement

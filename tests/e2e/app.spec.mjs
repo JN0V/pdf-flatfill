@@ -188,7 +188,14 @@ test.describe.serial('parcours d’édition', () => {
   });
 
   test('double-clic dans la liste : aller à l’entrée et l’éditer', async () => {
-    await page.locator('.entry', { hasText: 'DURAND' }).dblclick();
+    // La séquence réelle d'un utilisateur : un clic qui sélectionne, une
+    // pause, puis un double-clic — le nœud de la ligne doit survivre à la
+    // sélection, sinon le double-clic se perd.
+    const row = page.locator('.entry', { hasText: 'DURAND' });
+    await row.click();
+    await expect(row).toHaveClass(/is-selected/);
+    await page.waitForTimeout(400);
+    await row.dblclick();
     await expect(page.locator('#popover')).toBeVisible();
     await expect(page.locator('#popover-title')).toHaveText('Modifier le texte');
     await expect(page.locator('#popover-text')).toHaveValue('DURAND');
@@ -295,8 +302,12 @@ test.describe('internationalisation', () => {
       expect(await page.evaluate(() => {
         const pop = document.getElementById('popover');
         const foot = pop.querySelector('.popover-foot');
+        const tops = [...foot.querySelectorAll('button')]
+          .map((b) => Math.round(b.getBoundingClientRect().top));
         return pop.scrollWidth <= pop.clientWidth + 1
-          && foot.getBoundingClientRect().right <= pop.getBoundingClientRect().right + 1;
+          && foot.getBoundingClientRect().right <= pop.getBoundingClientRect().right + 1
+          // Le pied tient sur UNE ligne : tous les boutons au même niveau.
+          && Math.max(...tops) - Math.min(...tops) <= 2;
       })).toBe(true);
       await context.close();
     });
