@@ -38,7 +38,21 @@ in the side panel) to change its content, note, size or font; drag it to move
 it; resize an image by its corner handle. Check marks come in several styles —
 a plain X, real ✓ ✗ ● glyphs (ZapfDingbats, one of the standard PDF fonts), or
 any character. Dropping the PDF together with its description puts everything
-back in place for another pass.
+back in place for another pass — and a description can also arrive late: the
+“Load a .toml” button (or a drop onto the editor) brings a `.toml`, an image
+or a font into the open session, asking before it replaces existing entries,
+and refusing — with the CLI's shape checks — a file that parses but does not
+describe anything usable.
+
+By default the generated PDF also
+[carries its own description](#one-file-that-carries-everything): the TOML,
+the blank source and every image and font travel inside it as PDF
+attachments, so dropping the filled PDF back on the app — alone — restores
+the whole session, editing on the embedded blank source. A checkbox in the
+download dialog turns this off — the PDF regenerates on the spot, its real
+size shown next to it — because it cuts both ways: the file is roughly twice
+as heavy, and whoever receives the filled form also receives the
+description, notes included.
 
 Fonts go beyond the built-in ones — a signature wants a handwriting face. The
 font menu adds a Google Font by name (fetched as WOFF from Fontsource's npm
@@ -78,8 +92,10 @@ GitHub Actions). It then serves at <https://jn0v.github.io/pdf-flatfill/>.
 
 `tests/e2e/` covers the whole journey in a real browser (Playwright): load,
 place, edit, move, resize, delete, navigate, zoom, export, generate, resume —
-including a byte-for-byte export → reload → export round trip, and one test per
-language checking that every screen still fits. The suite also feeds its
+including a byte-for-byte export → reload → export round trip, the
+self-contained cycle (generate with the description inside, restore everything
+from that one file), and one test per language checking that every screen
+still fits. The suite also feeds its
 exported TOML back to `fill-pdf --dry-run`, so the two front-ends cannot drift
 apart silently. CI runs all of it on every push; locally:
 
@@ -152,7 +168,17 @@ Copy the template next to the PDF you want to fill, edit it, then:
 fill-pdf my-form.toml --dry-run      # check without writing
 fill-pdf my-form.toml                # write
 fill-pdf my-form.toml --force        # overwrite an existing output
+fill-pdf my-form.toml --embed        # the output carries description + assets
+                                     # (and roughly doubles in size)
+fill-pdf --unpack filled.pdf         # recreate the folder from such a PDF
 ```
+
+`--embed` and `--unpack` are the two halves of the
+[self-contained PDF](#one-file-that-carries-everything): the first attaches
+the description, the blank source and every referenced image and font inside
+the output; the second, pointed at such a PDF (made here or by the web app),
+extracts them next to it (or into `-C`), giving back a folder that `fill-pdf`
+and the web app accept as-is.
 
 ## Where descriptions live: next to their PDF
 
@@ -255,26 +281,31 @@ value, `--dry-run` to check the shape, then generate and look. The `note = "..."
 fields exist for exactly that — finding your way on the third pass. The web app
 removes that chore: you click on the page, it writes the numbers.
 
-## Roadmap
+## One file that carries everything
 
-**To consider: carry the description inside the filled PDF.** Embed the TOML in
-the output PDF so that re-editing needs only that one file: open the filled PDF,
-the tool finds the description inside it, and everything is back in place — no
-second file to keep track of, no description lost because it was never saved
-next to its PDF. The right mechanism is a PDF embedded file (an attachment, as
-both PyMuPDF and pdf-lib support), not metadata proper — XMP is not made for
-arbitrary payloads. Two things to settle before committing to it:
+The filled PDF can **carry its own description**: the TOML, the blank source
+PDF and every image and font ride along inside it as PDF embedded files
+(attachments — the mechanism both PyMuPDF and pdf-lib support, and that
+`pdfdetach -list` sees; XMP metadata is not made for arbitrary payloads).
+Re-editing then needs only that one file: drop it on the web app alone, or
+`fill-pdf --unpack` it, and everything is back in place — no second file to
+keep track of, no description lost because it was never saved next to its PDF.
 
-- **Re-editing needs the blank source, not the filled output.** The output is
-  flattened; repainting over it would double every mark. Either the source PDF
-  is embedded alongside the TOML (size doubles, but the file becomes fully
-  self-contained), or the tool regenerates from a source the user still has.
-- **The description travels with the PDF.** Whoever receives the filled form
-  also receives the TOML — mostly the same data that is painted on the page,
-  but including notes and structure. Worth an explicit choice, or an option.
+Two decisions shape the feature:
 
-This would complement the TOML-next-to-the-PDF convention, not replace it: the
-standalone file remains the diffable, hand-editable reference.
+- **The blank source is embedded alongside the TOML.** The output is
+  flattened; repainting over it would double every mark. Both front-ends
+  therefore restore onto the embedded source, never onto the filled page. The
+  file size roughly doubles, and in exchange the file is fully self-contained.
+- **The description travels with the PDF — as an explicit choice.** Whoever
+  receives the filled form also receives the TOML: mostly the same data that
+  is painted on the page, but including notes and structure, plus the blank
+  source. The web app says so next to a checkbox in the download dialog (on
+  by default, toggling regenerates the file with its size in view); the CLI
+  only embeds when asked with `--embed`.
+
+This complements the TOML-next-to-the-PDF convention, it does not replace it:
+the standalone file remains the diffable, hand-editable reference.
 
 ## Built on
 

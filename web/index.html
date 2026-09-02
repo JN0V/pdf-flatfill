@@ -91,6 +91,7 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M9.6 9.2A2.5 2.5 0 0 1 12 7.5c1.4 0 2.5 1 2.5 2.2 0 1.5-1.4 1.8-2.2 2.6-.3.3-.3.7-.3 1.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M12 16.5v.1" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
       </button>
       <select class="lang-select" aria-label="Language"></select>
+      <button id="import-toml" class="btn btn-ghost" type="button" data-i18n="importToml">Load a .toml</button>
       <button id="export-toml" class="btn btn-ghost" type="button" data-i18n="exportToml">Export .toml</button>
       <button id="generate" class="btn btn-primary" type="button" data-i18n="generate">Generate the PDF</button>
     </div>
@@ -197,14 +198,21 @@
       <p id="done-summary" class="dialog-summary"></p>
       <a id="done-pdf" class="download download-primary" download>
         <span class="download-name" id="done-pdf-name"></span>
-        <span class="download-sub" data-i18n="donePdfSub">The form, filled in</span>
+        <span class="download-sub"><span data-i18n="donePdfSub">The form, filled in</span><span id="done-pdf-size" class="download-size"></span></span>
       </a>
       <a id="done-toml" class="download" download>
         <span class="download-name" id="done-toml-name"></span>
         <span class="download-sub" data-i18n="doneTomlSub">Your answers, to resume later</span>
       </a>
       <div id="done-fonts" class="done-fonts"></div>
-      <p class="dialog-hint" data-i18n="doneHint">Keep the .toml file in the same folder as the original PDF: open both together and everything falls back into place.</p>
+      <label class="embed-box">
+        <input id="embed-desc" type="checkbox" checked>
+        <span class="embed-text">
+          <span class="embed-label" data-i18n="embedLabel">Carry the description inside the PDF</span>
+          <span class="embed-sub" data-i18n="embedSub">The filled PDF alone reopens here, ready to edit. In exchange the file is about twice as heavy, and whoever receives it also gets the description, notes included.</span>
+        </span>
+      </label>
+      <p id="done-hint" class="dialog-hint" data-i18n="doneHint">Keep the .toml file in the same folder as the original PDF: open both together and everything falls back into place.</p>
       <button id="done-close" class="btn btn-ghost" type="button" data-i18n="doneBack">Back to editing</button>
     </div>
   </div>
@@ -239,6 +247,7 @@
 
   <input id="image-input" type="file" accept="image/png,image/jpeg" hidden>
   <input id="font-input" type="file" accept=".ttf,.otf,.woff" hidden>
+  <input id="import-input" type="file" accept=".toml,image/png,image/jpeg,.ttf,.otf,.woff" multiple hidden>
 </section>
 
 <script type="module" src="app.js"></script>

@@ -3,7 +3,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { parse as parseToml } from 'smol-toml';
-import { makeFixtures, fetchSignatureFont, extractPageText, ARTIFACTS } from './fixtures.mjs';
+import { makeFixtures, fetchSignatureFont, extractPageText, extractAttachments, ARTIFACTS } from './fixtures.mjs';
 
 let pdfPath, pngPath;
 
@@ -338,6 +338,50 @@ test.describe.serial('resuming a description', () => {
     expect(readFileSync(`${ARTIFACTS}formulaire-2.toml`, 'utf8'))
       .toBe(readFileSync(`${ARTIFACTS}formulaire.toml`, 'utf8'));
   });
+
+  test('a .toml loads after the fact, from the editor', async ({ page }) => {
+    await page.goto('/');
+    await page.setInputFiles('#file-input', pdfPath);
+    await expect(page.locator('#editor')).toBeVisible();
+    // A stray entry first: loading a description then asks before replacing.
+    await page.click('#overlay', { position: { x: 100, y: 100 } });
+    await page.fill('#popover-text', 'BROUILLON');
+    await page.click('#popover-place');
+    await expect(page.locator('.entry')).toHaveCount(1);
+
+    page.once('dialog', (d) => d.accept());
+    const chooser = page.waitForEvent('filechooser');
+    await page.click('#import-toml');
+    await (await chooser).setFiles(`${ARTIFACTS}formulaire.toml`);
+    await expect(page.locator('.entry')).toHaveCount(4);
+    await expect(page.locator('.placed', { hasText: 'DURAND' })).toBeVisible();
+    await expect(page.locator('.entry', { hasText: 'BROUILLON' })).toHaveCount(0);
+  });
+
+  test('a malformed description is refused and changes nothing', async ({ page }) => {
+    await page.goto('/');
+    await page.setInputFiles('#file-input', pdfPath);
+    await expect(page.locator('#editor')).toBeVisible();
+    await page.click('#overlay', { position: { x: 100, y: 100 } });
+    await page.fill('#popover-text', 'GARDE');
+    await page.click('#popover-place');
+
+    // Valid TOML syntax, invalid description: a text without coordinates.
+    // The confirm fires first (entries exist), then the refusal.
+    const dialogs = [];
+    page.on('dialog', async (d) => { dialogs.push(d.message()); await d.accept(); });
+    const chooser = page.waitForEvent('filechooser');
+    await page.click('#import-toml');
+    await (await chooser).setFiles({
+      name: 'broken.toml', mimeType: 'application/toml',
+      buffer: Buffer.from('[[text]]\npage = 1\ntext = "orphelin"\n'),
+    });
+    await expect(page.locator('.entry')).toHaveCount(1); // untouched
+    await expect(page.locator('.placed')).toHaveText('GARDE');
+    await expect.poll(() => dialogs.length).toBe(2);
+    expect(dialogs[1]).toContain('Description illisible');
+    expect(dialogs[1]).toContain('[[text]] #1');
+  });
 });
 
 test.describe('layer order', () => {
@@ -453,6 +497,98 @@ test.describe.serial('custom fonts (signatures)', () => {
     await (await chooser).setFiles(fontPath);
     await page.click('#generate');
     await expect(page.locator('#done')).toBeVisible();
+  });
+});
+
+test.describe.serial('a self-contained filled PDF', () => {
+  test('the description, the source and the image travel inside the output', async ({ page }) => {
+    await page.goto('/');
+    await page.setInputFiles('#file-input', pdfPath);
+    await expect(page.locator('#editor')).toBeVisible();
+
+    await page.click('#overlay', { position: { x: 150, y: 250 } });
+    await page.fill('#popover-text', 'DUPONT');
+    await page.fill('#popover-note', 'Nom');
+    await page.click('#popover-place');
+    await page.click('.tool[data-tool="image"]');
+    const chooser = page.waitForEvent('filechooser');
+    await page.click('#overlay', { position: { x: 600, y: 300 } });
+    await (await chooser).setFiles(pngPath);
+
+    // The reference: what the description says before it goes inside.
+    const [toml] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#export-toml'),
+    ]);
+    await toml.saveAs(`${ARTIFACTS}embedded-ref.toml`);
+
+    await page.click('#generate');
+    await expect(page.locator('#done')).toBeVisible();
+    // Carrying the description is the default; the dialog's checkbox makes
+    // it a choice, the closing advice tells the embedded story, and the
+    // extra weight is visible: the real file size sits on the download.
+    await expect(page.locator('#embed-desc')).toBeChecked();
+    await expect(page.locator('#done-hint')).toContainText('Ce PDF emporte sa description');
+    await expect(page.locator('#done-pdf-size')).toHaveText(/·\s[\d,.]+\s(ko|Mo)/);
+    const [pdf] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#done-pdf'),
+    ]);
+    await pdf.saveAs(`${ARTIFACTS}embedded.pdf`);
+
+    const attachments = await extractAttachments(readFileSync(`${ARTIFACTS}embedded.pdf`));
+    expect(Object.keys(attachments).sort())
+      .toEqual(['formulaire.pdf', 'formulaire.toml', 'signature.png']);
+    expect(Buffer.from(attachments['formulaire.toml']).toString('utf8'))
+      .toBe(readFileSync(`${ARTIFACTS}embedded-ref.toml`, 'utf8'));
+  });
+
+  test('the filled PDF alone puts everything back in place', async ({ page }) => {
+    await page.goto('/');
+    await page.setInputFiles('#file-input', `${ARTIFACTS}embedded.pdf`);
+    await expect(page.locator('#editor')).toBeVisible();
+    // The working PDF is the embedded blank SOURCE, not the flattened output.
+    await expect(page.locator('#file-name')).toHaveText('formulaire.pdf');
+    await expect(page.locator('.entry')).toHaveCount(2);
+    await expect(page.locator('.placed')).toHaveText('DUPONT');
+    await expect(page.locator('.entry-note').first()).toHaveText('Nom');
+    // The image came back from inside the PDF: nothing to re-attach.
+    await expect(page.locator('.entry-missing')).toHaveCount(0);
+    await expect(page.locator('.placed-image')).not.toHaveClass(/is-missing/);
+
+    // Full circle: the re-exported description is byte-identical.
+    const [again] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#export-toml'),
+    ]);
+    await again.saveAs(`${ARTIFACTS}embedded-again.toml`);
+    expect(readFileSync(`${ARTIFACTS}embedded-again.toml`, 'utf8'))
+      .toBe(readFileSync(`${ARTIFACTS}embedded-ref.toml`, 'utf8'));
+  });
+
+  test('unchecked in the dialog, the output regenerates clean', async ({ page }) => {
+    await page.goto('/');
+    await page.setInputFiles('#file-input', pdfPath);
+    await expect(page.locator('#editor')).toBeVisible();
+    await page.click('#overlay', { position: { x: 150, y: 250 } });
+    await page.fill('#popover-text', 'SEUL');
+    await page.click('#popover-place');
+    await page.click('#generate');
+    await expect(page.locator('#done')).toBeVisible();
+    await expect(page.locator('#done-hint')).toContainText('Ce PDF emporte sa description');
+
+    // Toggling the checkbox rebuilds the download on the spot: new blob,
+    // other closing advice, smaller file.
+    const heavy = await page.locator('#done-pdf').getAttribute('href');
+    await page.locator('#embed-desc').uncheck();
+    await expect(page.locator('#done-pdf')).not.toHaveAttribute('href', heavy);
+    await expect(page.locator('#done-hint')).toContainText('Gardez le fichier .toml');
+    const [pdf] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#done-pdf'),
+    ]);
+    await pdf.saveAs(`${ARTIFACTS}plain.pdf`);
+    expect(await extractAttachments(readFileSync(`${ARTIFACTS}plain.pdf`))).toEqual({});
   });
 });
 

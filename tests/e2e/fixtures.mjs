@@ -39,6 +39,16 @@ export async function fetchSignatureFont() {
   }
 }
 
+// The embedded files of a generated PDF, as {filename: bytes} — what a
+// "carry the description" output must hold, and a plain output must not.
+export async function extractAttachments(bytes) {
+  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const doc = await getDocument({ data: new Uint8Array(bytes), verbosity: 0 }).promise;
+  const attachments = (await doc.getAttachments()) ?? {};
+  return Object.fromEntries(Object.values(attachments)
+    .map((att) => [att.filename, att.content]));
+}
+
 // Text extraction from a generated PDF, to verify what actually got
 // painted (pdf.js on the node side, no worker).
 export async function extractPageText(bytes, pageNumber) {

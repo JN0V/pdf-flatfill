@@ -10,7 +10,7 @@
 
 import * as pdfjsLib from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs';
 import { parse as parseToml } from 'https://cdn.jsdelivr.net/npm/smol-toml@1.3.1/+esm';
-import { t, tn, setLang, applyStatic } from './i18n.js';
+import { t, tn, lang, setLang, applyStatic } from './i18n.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs';
@@ -116,8 +116,9 @@ const els = {
   fontPickerList: $('font-picker-list'), fontPickerCancel: $('font-picker-cancel'),
   doneFonts: $('done-fonts'),
   help: $('help'),
-  done: $('done'), doneSummary: $('done-summary'),
-  donePdf: $('done-pdf'), donePdfName: $('done-pdf-name'),
+  embedDesc: $('embed-desc'),
+  done: $('done'), doneSummary: $('done-summary'), doneHint: $('done-hint'),
+  donePdf: $('done-pdf'), donePdfName: $('done-pdf-name'), donePdfSize: $('done-pdf-size'),
   doneToml: $('done-toml'), doneTomlName: $('done-toml-name'),
 };
 
@@ -293,6 +294,9 @@ async function handleFiles(files) {
     state.pdfDoc = await pdfjsLib.getDocument({ data: state.pdfBytes.slice() }).promise;
     state.page = 1;
     state.scale = 0; // recomputed on first render (fit to width)
+    // A filled PDF that carries its description restores by itself — unless
+    // a .toml was dropped alongside, which stays the explicit reference.
+    if (!toml) await restoreEmbedded();
   }
   if (toml) {
     try {
@@ -317,8 +321,35 @@ async function handleFiles(files) {
   renderPanel();
 }
 
+// Mirrors the CLI's shape checks: a TOML that parses can still describe
+// nothing usable. Ran before any state is touched, so a bad file leaves the
+// session exactly as it was — the thrown message lands in the badToml alert.
+function validateDescription(form) {
+  const fail = (kind, index, what) => {
+    throw new Error(`[[${kind}]] #${index}: ${what}`);
+  };
+  const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+  const checkCommon = (e, kind, i, needXY) => {
+    if (!Number.isInteger(e.page) || e.page < 1) fail(kind, i, "'page' must be an integer >= 1");
+    if (needXY && (!isNum(e.x) || !isNum(e.y))) fail(kind, i, "'x' and 'y' must be numbers");
+  };
+  (form.text ?? []).forEach((e, i) => {
+    checkCommon(e, 'text', i + 1, true);
+    if (e.text === undefined) fail('text', i + 1, "missing 'text'");
+  });
+  (form.check ?? []).forEach((e, i) => checkCommon(e, 'check', i + 1, true));
+  (form.image ?? []).forEach((e, i) => {
+    checkCommon(e, 'image', i + 1, false);
+    if (!Array.isArray(e.rect) || e.rect.length !== 4 || !e.rect.every(isNum)) {
+      fail('image', i + 1, "'rect' expects 4 numbers");
+    }
+    if (typeof e.file !== 'string') fail('image', i + 1, "missing 'file'");
+  });
+}
+
 function loadDescription(text) {
   const form = parseToml(text);
+  validateDescription(form);
   if (form.output) state.outputName = String(form.output);
   const style = form.style ?? {};
   if (Array.isArray(style.ink) && style.ink.length === 3) state.style.ink = style.ink.map(Number);
@@ -370,6 +401,47 @@ function loadDescription(text) {
   normalizeZ();
   refreshFontSelects();
   syncStyleInputs();
+}
+
+// A PDF generated with "carry the description" holds everything as PDF
+// embedded files: the TOML, the blank source and its assets. The embedded
+// SOURCE becomes the working PDF — the dropped file is flattened, and
+// painting over it again would double every mark. A PDF whose attachments
+// don't form that pair (no .toml, or no source) opens as a plain PDF.
+const ASSET_MIME = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+  woff: 'font/woff', ttf: 'font/ttf', otf: 'font/otf',
+};
+
+async function restoreEmbedded() {
+  const raw = await state.pdfDoc.getAttachments();
+  if (!raw) return;
+  const files = Object.entries(raw)
+    .map(([key, att]) => ({ name: att.filename ?? key, bytes: att.content }))
+    .filter((f) => f.bytes);
+  const toml = files.find((f) => /\.toml$/i.test(f.name));
+  if (!toml) return;
+  let text, form;
+  try {
+    text = new TextDecoder().decode(toml.bytes);
+    form = parseToml(text);
+    // Checked before the working PDF is swapped: a broken embedded
+    // description must leave the dropped file to open as a plain PDF.
+    validateDescription(form);
+  } catch { return; }
+  const source = files.find((f) => f.name === form.source);
+  if (!source) return;
+
+  state.pdfBytes = source.bytes;
+  state.sourceName = source.name;
+  state.pdfDoc = await pdfjsLib.getDocument({ data: state.pdfBytes.slice() }).promise;
+  loadDescription(text);
+  for (const f of files) {
+    if (f === toml || f === source) continue;
+    const type = ASSET_MIME[f.name.split('.').pop().toLowerCase()];
+    if (type?.startsWith('font/')) await attachFontFile(new File([f.bytes], f.name));
+    else if (type) await attachImageFile(new File([f.bytes], f.name, { type }));
+  }
 }
 
 async function loadImage(file) {
@@ -1238,6 +1310,13 @@ function serializeToml() {
   return out.join('\n');
 }
 
+function fmtBytes(n) {
+  const mega = n >= 1024 * 1024;
+  return new Intl.NumberFormat(lang, {
+    style: 'unit', unit: mega ? 'megabyte' : 'kilobyte', maximumFractionDigits: 1,
+  }).format(n / (mega ? 1048576 : 1024));
+}
+
 function stem() { return state.sourceName.replace(/\.pdf$/i, ''); }
 function outputName() { return state.outputName ?? `${stem()}-rempli.pdf`; }
 
@@ -1267,9 +1346,7 @@ $('generate').addEventListener('click', async () => {
   }
 
   // Fonts used by the description: custom families must have their bytes.
-  const usedFonts = new Set(state.entries
-    .filter((e) => e.kind !== 'image')
-    .map((e) => e.font ?? state.style.font));
+  const usedFonts = fontsInUse();
   const lostFonts = [...usedFonts]
     .filter((code) => customFonts.has(code) && !customFonts.get(code).bytes)
     .map((code) => customFonts.get(code).file);
@@ -1278,6 +1355,48 @@ $('generate').addEventListener('click', async () => {
     return;
   }
 
+  if (!(await refreshDonePdf())) return;
+
+  els.doneToml.href = URL.createObjectURL(new Blob([serializeToml()], { type: 'application/toml' }));
+  els.doneToml.download = `${stem()}.toml`;
+  els.doneTomlName.textContent = `${stem()}.toml`;
+
+  // Custom font files travel with the description, like the .toml itself.
+  els.doneFonts.textContent = '';
+  for (const code of usedFonts) {
+    const rec = customFonts.get(code);
+    if (!rec?.bytes) continue;
+    const link = document.createElement('a');
+    link.className = 'download';
+    link.download = rec.file;
+    link.href = URL.createObjectURL(new Blob([rec.bytes], { type: 'font/woff' }));
+    const name = document.createElement('span');
+    name.className = 'download-name';
+    name.textContent = rec.file;
+    const sub = document.createElement('span');
+    sub.className = 'download-sub';
+    sub.textContent = t('doneFontSub');
+    link.append(name, sub);
+    els.doneFonts.appendChild(link);
+  }
+
+  const counts = { text: 0, check: 0, image: 0 };
+  for (const entry of state.entries) counts[entry.kind] += 1;
+  els.doneSummary.textContent =
+    `${tn(counts.text, 'text')} · ${tn(counts.check, 'check')} · ${tn(counts.image, 'image')}`
+    + `, ${t('across')} ${tn(state.pdfDoc.numPages, 'page')}`;
+  els.done.hidden = false;
+});
+
+function fontsInUse() {
+  return new Set(state.entries
+    .filter((e) => e.kind !== 'image')
+    .map((e) => e.font ?? state.style.font));
+}
+
+// Builds the output from the current state; null when an entry aims outside
+// the document (only a resumed description can do that), after saying so.
+async function buildPdf(embed) {
   const { PDFDocument, rgb } = PDFLib;
   const doc = await PDFDocument.load(state.pdfBytes);
   const pages = doc.getPages();
@@ -1303,7 +1422,7 @@ $('generate').addEventListener('click', async () => {
     const page = pages[entry.page - 1];
     if (!page) {
       alert(t('pageRange', { page: entry.page, count: pages.length }));
-      return;
+      return null;
     }
     const pageHeight = page.getHeight();
     if (entry.kind === 'image') {
@@ -1335,43 +1454,48 @@ $('generate').addEventListener('click', async () => {
     }
   }
 
-  const bytes = await doc.save();
-  const pdfBlob = new Blob([bytes], { type: 'application/pdf' });
-  const tomlBlob = new Blob([serializeToml()], { type: 'application/toml' });
-
-  els.donePdf.href = URL.createObjectURL(pdfBlob);
-  els.donePdf.download = outputName();
-  els.donePdfName.textContent = outputName();
-  els.doneToml.href = URL.createObjectURL(tomlBlob);
-  els.doneToml.download = `${stem()}.toml`;
-  els.doneTomlName.textContent = `${stem()}.toml`;
-
-  // Custom font files travel with the description, like the .toml itself.
-  els.doneFonts.textContent = '';
-  for (const code of usedFonts) {
-    const rec = customFonts.get(code);
-    if (!rec?.bytes) continue;
-    const link = document.createElement('a');
-    link.className = 'download';
-    link.download = rec.file;
-    link.href = URL.createObjectURL(new Blob([rec.bytes], { type: 'font/woff' }));
-    const name = document.createElement('span');
-    name.className = 'download-name';
-    name.textContent = rec.file;
-    const sub = document.createElement('span');
-    sub.className = 'download-sub';
-    sub.textContent = t('doneFontSub');
-    link.append(name, sub);
-    els.doneFonts.appendChild(link);
+  // "Carry the description inside the PDF": the TOML, the blank source and
+  // every asset ride along as PDF embedded files (attachments), so the
+  // filled PDF alone reopens here fully editable. The source must come too:
+  // the output is flattened, repainting over it would double every mark.
+  if (embed) {
+    const attached = new Set();
+    const attach = async (data, name, mimeType) => {
+      if (attached.has(name)) return;
+      attached.add(name);
+      await doc.attach(data, name, { mimeType, description: 'pdf-flatfill' });
+    };
+    await attach(new TextEncoder().encode(serializeToml()), `${stem()}.toml`, 'application/toml');
+    await attach(state.pdfBytes, state.sourceName, 'application/pdf');
+    for (const code of fontsInUse()) {
+      const rec = customFonts.get(code);
+      if (rec?.bytes) await attach(rec.bytes, rec.file, ASSET_MIME[rec.file.split('.').pop().toLowerCase()] ?? 'font/woff');
+    }
+    for (const entry of state.entries) {
+      if (entry.kind === 'image') await attach(entry.image.bytes, entry.file, entry.image.mime);
+    }
   }
 
-  const counts = { text: 0, check: 0, image: 0 };
-  for (const entry of state.entries) counts[entry.kind] += 1;
-  els.doneSummary.textContent =
-    `${tn(counts.text, 'text')} · ${tn(counts.check, 'check')} · ${tn(counts.image, 'image')}`
-    + `, ${t('across')} ${tn(pages.length, 'page')}`;
-  els.done.hidden = false;
-});
+  return doc.save();
+}
+
+// The dialog's filled PDF, rebuilt to match the embed checkbox — the choice
+// lives where the file is picked up, so toggling it regenerates the
+// download, its visible size and the closing advice on the spot.
+async function refreshDonePdf() {
+  const bytes = await buildPdf(els.embedDesc.checked);
+  if (!bytes) return false;
+  if (els.donePdf.href) URL.revokeObjectURL(els.donePdf.href);
+  els.donePdf.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+  els.donePdf.download = outputName();
+  els.donePdfName.textContent = outputName();
+  els.donePdfSize.textContent = `· ${fmtBytes(bytes.length)}`;
+  els.doneHint.dataset.i18n = els.embedDesc.checked ? 'doneHintEmbedded' : 'doneHint';
+  els.doneHint.textContent = t(els.doneHint.dataset.i18n);
+  return true;
+}
+
+els.embedDesc.addEventListener('change', refreshDonePdf);
 
 $('done-close').addEventListener('click', () => { els.done.hidden = true; });
 els.done.addEventListener('click', (e) => { if (e.target === els.done) els.done.hidden = true; });
@@ -1379,6 +1503,37 @@ els.done.addEventListener('click', (e) => { if (e.target === els.done) els.done.
 $('help-open').addEventListener('click', () => { els.help.hidden = false; });
 $('help-close').addEventListener('click', () => { els.help.hidden = true; });
 els.help.addEventListener('click', (e) => { if (e.target === els.help) els.help.hidden = true; });
+
+// ---------------------------------------------------------------- late imports
+
+// A description — or an image or font it references — can arrive after the
+// PDF: the topbar import button and any drop on the editor land here.
+// Loading a .toml replaces the current entries, confirmed when any exist.
+async function importFiles(files) {
+  const toml = files.find((f) => f.name.toLowerCase().endsWith('.toml'));
+  if (toml && (!state.entries.length || window.confirm(t('importReplace')))) {
+    try {
+      loadDescription(await toml.text());
+    } catch (err) {
+      alert(t('badToml', { msg: err.message }));
+    }
+  }
+  for (const file of files) {
+    const name = file.name.toLowerCase();
+    if (/\.(ttf|otf|woff)$/.test(name)) await attachFontFile(file);
+    else if (file.type === 'image/png' || file.type === 'image/jpeg') await attachImageFile(file);
+  }
+  closePopover();
+  renderOverlay();
+  renderPanel();
+}
+
+$('import-toml').addEventListener('click', () => $('import-input').click());
+$('import-input').addEventListener('change', async (e) => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (files.length) await importFiles(files);
+});
 
 // ---------------------------------------------------------------- file inputs
 
@@ -1406,6 +1561,16 @@ els.imageInput.addEventListener('change', async (e) => {
 for (const eventName of ['dragover', 'drop']) {
   document.addEventListener(eventName, (e) => e.preventDefault());
 }
+// Files dropped on the editor (the home dropzone has its own handler): a
+// PDF starts over through the normal path, anything else — description,
+// image, font — joins the session in place.
+document.addEventListener('drop', (e) => {
+  if (els.editor.hidden) return;
+  const files = [...e.dataTransfer.files];
+  if (!files.length) return;
+  if (files.some((f) => f.name.toLowerCase().endsWith('.pdf'))) handleFiles(files);
+  else importFiles(files);
+});
 els.dropzone.addEventListener('dragover', () => els.dropzone.classList.add('is-over'));
 els.dropzone.addEventListener('dragleave', () => els.dropzone.classList.remove('is-over'));
 els.dropzone.addEventListener('drop', (e) => {

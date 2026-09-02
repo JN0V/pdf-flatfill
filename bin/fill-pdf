@@ -25,6 +25,13 @@ def die(message):
     raise SystemExit(1)
 
 
+def human_size(n):
+    for unit in ("B", "KB", "MB"):
+        if n < 1024 or unit == "MB":
+            return f"{n} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
+
+
 def load_form(path):
     if not path.is_file():
         die(f"description not found: {path}")
@@ -66,6 +73,68 @@ def require(entry, keys, kind, index):
         die(f"[[{kind}]] #{index}: missing field(s): {', '.join(missing)}")
 
 
+def unpack(args):
+    """Recreate a description folder from a self-contained filled PDF.
+
+    The names of the embedded files are the paths the description uses,
+    relative to itself — extracting them next to the PDF (or into -C) gives
+    back a folder that fill-pdf and the web app accept as-is.
+    """
+    fitz = import_pymupdf(required=True)
+    pdf_path = Path(args.form).expanduser()
+    if not pdf_path.is_file():
+        die(f"PDF not found: {pdf_path}")
+    workdir = Path(args.workdir).expanduser() if args.workdir else pdf_path.parent
+    if not workdir.is_dir():
+        die(f"working directory not found: {workdir}")
+
+    doc = fitz.open(pdf_path)
+    names = doc.embfile_names()
+    if not names:
+        die(f"{pdf_path} contains no embedded files — "
+            "was it generated with --embed (or the web app)?")
+
+    # Embedded names come from an arbitrary PDF: never let one write
+    # outside the working directory.
+    targets = []
+    for name in names:
+        rel = Path(name)
+        if rel.is_absolute() or ".." in rel.parts:
+            die(f"embedded file has an unsafe name: {name!r}")
+        target = workdir / rel
+        if target.exists() and not args.force:
+            die(f"{target} already exists. Re-run with --force to overwrite it.")
+        targets.append((name, target))
+
+    for name, target in targets:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(doc.embfile_get(name))
+        print(f"Extracted: {target}")
+    doc.close()
+
+
+def import_pymupdf(required):
+    """Since PyMuPDF 1.24 the module is named `pymupdf`; `fitz` remains a
+    deprecated legacy alias. So we try the modern name first."""
+    try:
+        import pymupdf
+        return pymupdf
+    except ImportError:
+        try:
+            import fitz
+            return fitz
+        except ImportError:
+            if required:
+                die(
+                    "PyMuPDF is required and missing.\n"
+                    "  Debian / Ubuntu : sudo apt install python3-pymupdf\n"
+                    "  Elsewhere       : pip install pymupdf inside a venv\n"
+                    "  (pip --user fails on PEP 668, and pipx only installs\n"
+                    "   applications: the library would stay invisible.)"
+                )
+            return None
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="fill-pdf",
@@ -88,7 +157,24 @@ def main():
         "-f", "--force", action="store_true",
         help="overwrite the output PDF if it already exists",
     )
+    parser.add_argument(
+        "-e", "--embed", action="store_true",
+        help="embed the description, its source PDF and its assets into the "
+             "output, as PDF attachments — the filled PDF then carries "
+             "everything needed to edit it again (see --unpack), at the "
+             "price of roughly doubling in size",
+    )
+    parser.add_argument(
+        "-u", "--unpack", action="store_true",
+        help="FORM is a filled PDF made with --embed (or the web app): "
+             "extract the embedded description and assets next to it, "
+             "then stop",
+    )
     args = parser.parse_args()
+
+    if args.unpack:
+        unpack(args)
+        return
 
     form_path = Path(args.form).expanduser()
     form = load_form(form_path)
@@ -158,25 +244,9 @@ def main():
 
     # Imported late: a dry run must be able to proof-read a description on a
     # machine where PyMuPDF is not installed.
-    #
-    # Since PyMuPDF 1.24 the module is named `pymupdf`; `fitz` remains a
-    # deprecated legacy alias. So we try the modern name first.
-    try:
-        import pymupdf as fitz
-    except ImportError:
-        try:
-            import fitz
-        except ImportError:
-            if not args.dry_run:
-                die(
-                    "PyMuPDF is required and missing.\n"
-                    "  Debian / Ubuntu : sudo apt install python3-pymupdf\n"
-                    "  Elsewhere       : pip install pymupdf inside a venv\n"
-                    "  (pip --user fails on PEP 668, and pipx only installs\n"
-                    "   applications: the library would stay invisible.)"
-                )
-            fitz = None
-            print("\nPyMuPDF missing: pages will not be checked against the PDF.")
+    fitz = import_pymupdf(required=not args.dry_run)
+    if fitz is None:
+        print("\nPyMuPDF missing: pages will not be checked against the PDF.")
 
     doc = fitz.open(source) if fitz else None
 
@@ -234,6 +304,28 @@ def main():
     for _z, _rank, _seq, op in sorted(paint_ops, key=lambda o: o[:3]):
         op()
 
+    # --embed makes the output self-contained: the description, the blank
+    # source and every asset ride along as PDF embedded files, so the filled
+    # PDF alone is enough to edit again (--unpack, or dropped on the web
+    # app). The source must come too: the output is flattened, and painting
+    # over it again would double every mark. Whoever receives the filled
+    # form also receives all of it, notes included — hence an explicit flag.
+    if args.embed:
+        payload = {form_path.name: form_path, form["source"]: source}
+        if base_fontfile:
+            payload.setdefault(base_fontfile, workdir / base_fontfile)
+        for entry in texts + checks:
+            if entry.get("fontfile"):
+                payload.setdefault(entry["fontfile"], workdir / entry["fontfile"])
+        for entry in images:
+            payload.setdefault(entry["file"], workdir / entry["file"])
+        print(f"Embedded    : {', '.join(payload)}")
+        if not args.dry_run:
+            for name, path in payload.items():
+                if not path.is_file():
+                    die(f"--embed: file not found: {path}")
+                doc.embfile_add(name, path.read_bytes(), filename=name)
+
     if args.dry_run:
         if doc:
             doc.close()
@@ -242,7 +334,8 @@ def main():
 
     doc.save(output)
     doc.close()
-    print(f"\nWritten: {output}")
+    # The size is worth showing: with --embed the output roughly doubles.
+    print(f"\nWritten: {output} ({human_size(output.stat().st_size)})")
 
 
 if __name__ == "__main__":

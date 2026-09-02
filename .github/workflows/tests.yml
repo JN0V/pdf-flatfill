@@ -43,6 +43,26 @@ jobs:
             bin/fill-pdf tests/e2e/.artifacts/formulaire-font.toml --dry-run
           fi
 
+      # The self-contained loop: fill for real with --embed, unpack the
+      # output into an empty directory, and the description, source and
+      # assets must come back byte-identical.
+      - name: CLI embeds and unpacks the description
+        run: |
+          bin/fill-pdf tests/e2e/.artifacts/formulaire.toml --force --embed
+          mkdir /tmp/unpacked
+          bin/fill-pdf --unpack tests/e2e/.artifacts/formulaire-rempli.pdf -C /tmp/unpacked
+          cmp tests/e2e/.artifacts/formulaire.toml /tmp/unpacked/formulaire.toml
+          cmp tests/e2e/.artifacts/formulaire.pdf /tmp/unpacked/formulaire.pdf
+          cmp tests/e2e/.artifacts/signature.png /tmp/unpacked/signature.png
+
+      # Crossed the other way: the self-contained PDF the WEB app generated
+      # during the suite must unpack with the CLI into a valid description.
+      - name: CLI unpacks the web app's self-contained PDF
+        run: |
+          mkdir /tmp/unpacked-web
+          bin/fill-pdf --unpack tests/e2e/.artifacts/embedded.pdf -C /tmp/unpacked-web
+          bin/fill-pdf /tmp/unpacked-web/formulaire.toml --dry-run
+
       - name: Keep traces on failure
         if: failure()
         uses: actions/upload-artifact@v4
