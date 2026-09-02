@@ -133,8 +133,8 @@ output = "filled-form.pdf"
 
 [style]
 ink  = [0.05, 0.15, 0.7]   # RGB from 0 to 1 — ink blue
-font = "helv"
-size = 10                  # default, overridable entry by entry
+font = "helv"              # defaults, both overridable entry by entry
+size = 10                  # (font takes PyMuPDF base-14 names: helv, tiro, cour, tibo…)
 
 [[text]]
 page = 1

@@ -164,7 +164,7 @@ def main():
                 fitz.Point(entry["x"], entry["y"]),
                 str(entry["text"]),
                 fontsize=entry.get("size", base_size),
-                fontname=font,
+                fontname=entry.get("font", font),
                 color=ink,
             )
 
@@ -176,7 +176,7 @@ def main():
                 fitz.Point(entry["x"], entry["y"]),
                 entry.get("mark", "X"),
                 fontsize=entry.get("size", base_size),
-                fontname=font,
+                fontname=entry.get("font", font),
                 color=ink,
             )
 
