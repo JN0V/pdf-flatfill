@@ -339,7 +339,7 @@ function loadDescription(text) {
   for (const entry of form.text ?? []) {
     state.entries.push({
       kind: 'text', page: entry.page, x: entry.x, y: entry.y,
-      text: String(entry.text ?? ''), size: entry.size,
+      text: String(entry.text ?? ''), size: entry.size, z: entry.z,
       ink: Array.isArray(entry.ink) ? entry.ink.map(Number) : undefined,
       font: entry.fontfile ? placeholderFont(entry.font, entry.fontfile) : entry.font,
       note: entry.note,
@@ -348,7 +348,7 @@ function loadDescription(text) {
   for (const entry of form.check ?? []) {
     state.entries.push({
       kind: 'check', page: entry.page, x: entry.x, y: entry.y,
-      mark: entry.mark, size: entry.size,
+      mark: entry.mark, size: entry.size, z: entry.z,
       ink: Array.isArray(entry.ink) ? entry.ink.map(Number) : undefined,
       font: entry.fontfile ? placeholderFont(entry.font, entry.fontfile) : entry.font,
       note: entry.note,
@@ -357,9 +357,16 @@ function loadDescription(text) {
   for (const entry of form.image ?? []) {
     state.entries.push({
       kind: 'image', page: entry.page, rect: entry.rect.map(Number),
-      file: entry.file, note: entry.note, image: null, // bytes to re-attach
+      z: entry.z, file: entry.file, note: entry.note, image: null, // bytes to re-attach
     });
   }
+  // Rebuild the paint order the description encodes: explicit z first,
+  // then the default layers (images, checks, texts), then file order.
+  state.entries = state.entries.map((e, i) => ({ e, i }))
+    .sort((a, b) => (a.e.z ?? 0) - (b.e.z ?? 0)
+      || KIND_RANK[a.e.kind] - KIND_RANK[b.e.kind] || a.i - b.i)
+    .map((x) => x.e);
+  normalizeZ();
   refreshFontSelects();
   syncStyleInputs();
 }
@@ -533,9 +540,9 @@ function select(index) {
 }
 
 function updatePanelSelection() {
-  [...els.entryList.children].forEach((li, index) => {
-    li.classList.toggle('is-selected', index === state.selected);
-  });
+  for (const li of els.entryList.children) {
+    li.classList.toggle('is-selected', Number(li.dataset.index) === state.selected);
+  }
 }
 
 // ---------------------------------------------------------------- dragging
@@ -622,9 +629,13 @@ const ICONS = {
 function renderPanel() {
   els.entryCount.textContent = `· ${state.entries.length}`;
   els.entryList.textContent = '';
-  state.entries.forEach((entry, index) => {
+  // The panel is a layer stack: top of the list paints last, i.e. on top.
+  for (let index = state.entries.length - 1; index >= 0; index -= 1) {
+    const entry = state.entries[index];
     const li = document.createElement('li');
     li.className = 'entry';
+    li.dataset.index = index;
+    li.draggable = true;
     if (index === state.selected) li.classList.add('is-selected');
 
     const icon = document.createElement('span');
@@ -680,8 +691,19 @@ function renderPanel() {
       if (entry.kind === 'image' && !entry.image) return;
       openEntry(index);
     });
+    // Drag a row to restack: what is higher in the list paints on top.
+    li.addEventListener('dragstart', (e) => {
+      dragRowFrom = index;
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    li.addEventListener('dragover', (e) => e.preventDefault());
+    li.addEventListener('drop', (e) => {
+      e.preventDefault();
+      reorderEntry(dragRowFrom, index);
+      dragRowFrom = null;
+    });
     els.entryList.appendChild(li);
-  });
+  }
 }
 
 // Select an entry, switch pages if needed, then open the editor.
@@ -702,6 +724,50 @@ function removeEntry(index) {
   state.entries.splice(index, 1);
   if (state.selected === index) state.selected = null;
   else if (state.selected > index) state.selected -= 1;
+  normalizeZ();
+  renderPanel();
+  renderOverlay();
+}
+
+// ------------------------------------------------------------- layer order
+
+const KIND_RANK = { image: 0, check: 1, text: 2 };
+
+// New entries slot into their default layer (images at the bottom, then
+// checks, then texts) — unless the user has taken manual control of the
+// order, in which case new entries land on top.
+function insertEntry(entry) {
+  let index = state.entries.length;
+  if (!state.entries.some((e) => e.z !== undefined)) {
+    while (index > 0 && KIND_RANK[state.entries[index - 1].kind] > KIND_RANK[entry.kind]) index -= 1;
+  }
+  state.entries.splice(index, 0, entry);
+  normalizeZ();
+  return state.entries.indexOf(entry);
+}
+
+// The entries array IS the paint order (first = bottom). When it matches
+// the default layer order no entry carries a z; the moment it deviates,
+// every entry gets its explicit position. Deterministic from the flat
+// order alone, so export -> import -> export stays byte-stable.
+function normalizeZ() {
+  const canonical = state.entries.map((e, i) => ({ e, i }))
+    .sort((a, b) => KIND_RANK[a.e.kind] - KIND_RANK[b.e.kind] || a.i - b.i)
+    .map((x) => x.e);
+  const isCanonical = canonical.every((e, i) => e === state.entries[i]);
+  state.entries.forEach((e, i) => {
+    if (isCanonical) delete e.z; else e.z = i;
+  });
+}
+
+let dragRowFrom = null;
+
+function reorderEntry(from, to) {
+  if (from === null || from === to) return;
+  const [entry] = state.entries.splice(from, 1);
+  state.entries.splice(from < to ? to - 1 : to, 0, entry);
+  state.selected = state.entries.indexOf(entry);
+  normalizeZ();
   renderPanel();
   renderOverlay();
 }
@@ -719,8 +785,7 @@ els.overlay.addEventListener('click', (event) => {
   const y = (event.clientY - rect.top) / state.scale;
 
   if (state.tool === 'check') {
-    state.entries.push({ kind: 'check', page: state.page, x: round1(x), y: round1(y) });
-    state.selected = state.entries.length - 1;
+    state.selected = insertEntry({ kind: 'check', page: state.page, x: round1(x), y: round1(y) });
     renderOverlay();
     renderPanel();
     return;
@@ -841,8 +906,7 @@ function submitPopover() {
     if (!value) return;
     const entry = { kind: 'text', page: state.page, x: round1(popCtx.x), y: round1(popCtx.y), text: value };
     applyStyleFields(entry, { note, size, font, ink });
-    state.entries.push(entry);
-    state.selected = state.entries.length - 1;
+    state.selected = insertEntry(entry);
   } else if (popCtx.mode === 'edit') {
     const entry = state.entries[popCtx.index];
     if (entry.kind === 'text') {
@@ -909,12 +973,11 @@ function placeImage(x, y) {
   state.pendingImage = null;
   const width = IMAGE_DEFAULT_WIDTH;
   const height = width * image.height / image.width;
-  state.entries.push({
+  state.selected = insertEntry({
     kind: 'image', page: state.page,
     rect: [round1(x), round1(y), round1(x + width), round1(y + height)],
     file: image.name, image,
   });
-  state.selected = state.entries.length - 1;
   renderOverlay();
   renderPanel();
 }
@@ -1051,6 +1114,7 @@ function serializeToml() {
     out.push('');
     out.push(`[[${entry.kind}]]`);
     out.push(`page = ${entry.page}`);
+    if (entry.z !== undefined) out.push(`z = ${entry.z}`);
     if (entry.kind === 'image') {
       out.push(`rect = [${entry.rect.map(fmt).join(', ')}]`);
       out.push(`file = ${tomlString(entry.file ?? 'image.png')}`);

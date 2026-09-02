@@ -156,7 +156,8 @@ test.describe.serial('editing journey', () => {
     await expect(edited).toBeVisible();
     await expect(edited).toHaveCSS('font-weight', '700');
     await expect(edited).toHaveCSS('color', 'rgb(192, 57, 43)');
-    await expect(page.locator('.entry-text').first()).toHaveText('DURAND');
+    await expect(page.locator('.entry', { hasText: 'DURAND' }).locator('.entry-text'))
+      .toHaveText('DURAND');
   });
 
   test('an entry moves by dragging', async () => {
@@ -321,6 +322,44 @@ test.describe.serial('resuming a description', () => {
     await again.saveAs(`${ARTIFACTS}formulaire-2.toml`);
     expect(readFileSync(`${ARTIFACTS}formulaire-2.toml`, 'utf8'))
       .toBe(readFileSync(`${ARTIFACTS}formulaire.toml`, 'utf8'));
+  });
+});
+
+test.describe('layer order', () => {
+  test('text paints over images by default; dragging rows restacks with z', async ({ page }) => {
+    await page.goto('/');
+    await page.setInputFiles('#file-input', pdfPath);
+    await expect(page.locator('#editor')).toBeVisible();
+
+    await page.click('#overlay', { position: { x: 150, y: 250 } });
+    await page.fill('#popover-text', 'NOM');
+    await page.click('#popover-place');
+    await page.click('.tool[data-tool="image"]');
+    const chooser = page.waitForEvent('filechooser');
+    await page.click('#overlay', { position: { x: 140, y: 240 } });
+    await (await chooser).setFiles(pngPath);
+
+    // Default stacking: the text is the topmost row of the panel and the
+    // last painted element of the overlay, even though it was placed first.
+    await expect(page.locator('.entry').first()).toContainText('NOM');
+    expect(await page.evaluate(() => {
+      const children = [...document.getElementById('overlay').children];
+      return children.findIndex((el) => el.classList.contains('placed'))
+        > children.findIndex((el) => el.classList.contains('placed-image'));
+    })).toBe(true);
+
+    // Drag the text row below the image row: the image now paints on top.
+    await page.locator('.entry').first().dragTo(page.locator('.entry').nth(1));
+    await expect(page.locator('.entry').first()).toContainText('signature.png');
+
+    const [toml] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#export-toml'),
+    ]);
+    await toml.saveAs(`${ARTIFACTS}layers.toml`);
+    const form = parseToml(readFileSync(`${ARTIFACTS}layers.toml`, 'utf8'));
+    expect(form.text[0].z).toBe(0);
+    expect(form.image[0].z).toBe(1);
   });
 });
 

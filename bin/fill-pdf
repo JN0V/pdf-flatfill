@@ -180,31 +180,38 @@ def main():
 
     doc = fitz.open(source) if fitz else None
 
+    # Layer order: images at the bottom, then checks, then texts — a
+    # signature's opaque background must not eat the name written next to
+    # it. An optional integer `z` overrides it, higher painting later.
+    paint_ops = []
+
     for index, entry in enumerate(texts, 1):
         require(entry, ("x", "y", "text"), "text", index)
         fargs = font_args(entry, "text", index)
         page = get_page(doc, entry, "text", index)
         if not args.dry_run:
-            page.insert_text(
-                fitz.Point(entry["x"], entry["y"]),
-                str(entry["text"]),
-                fontsize=entry.get("size", base_size),
-                color=tuple(entry.get("ink", ink)),
-                **fargs,
-            )
+            paint_ops.append((entry.get("z", 0), 2, len(paint_ops), lambda
+                page=page, entry=entry, fargs=fargs: page.insert_text(
+                    fitz.Point(entry["x"], entry["y"]),
+                    str(entry["text"]),
+                    fontsize=entry.get("size", base_size),
+                    color=tuple(entry.get("ink", ink)),
+                    **fargs,
+                )))
 
     for index, entry in enumerate(checks, 1):
         require(entry, ("x", "y"), "check", index)
         fargs = font_args(entry, "check", index)
         page = get_page(doc, entry, "check", index)
         if not args.dry_run:
-            page.insert_text(
-                fitz.Point(entry["x"], entry["y"]),
-                entry.get("mark", "X"),
-                fontsize=entry.get("size", base_size),
-                color=tuple(entry.get("ink", ink)),
-                **fargs,
-            )
+            paint_ops.append((entry.get("z", 0), 1, len(paint_ops), lambda
+                page=page, entry=entry, fargs=fargs: page.insert_text(
+                    fitz.Point(entry["x"], entry["y"]),
+                    entry.get("mark", "X"),
+                    fontsize=entry.get("size", base_size),
+                    color=tuple(entry.get("ink", ink)),
+                    **fargs,
+                )))
 
     for index, entry in enumerate(images, 1):
         require(entry, ("rect", "file"), "image", index)
@@ -216,12 +223,16 @@ def main():
             die(f"[[image]] #{index}: file not found: {picture}")
         page = get_page(doc, entry, "image", index)
         if not args.dry_run:
-            page.insert_image(
-                fitz.Rect(*rect),
-                filename=str(picture),
-                keep_proportion=entry.get("keep_proportion", True),
-                overlay=True,
-            )
+            paint_ops.append((entry.get("z", 0), 0, len(paint_ops), lambda
+                page=page, rect=rect, picture=picture, entry=entry: page.insert_image(
+                    fitz.Rect(*rect),
+                    filename=str(picture),
+                    keep_proportion=entry.get("keep_proportion", True),
+                    overlay=True,
+                )))
+
+    for _z, _rank, _seq, op in sorted(paint_ops, key=lambda o: o[:3]):
+        op()
 
     if args.dry_run:
         if doc:

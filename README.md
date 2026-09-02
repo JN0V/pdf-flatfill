@@ -230,7 +230,14 @@ note = "Ms. checkbox"
 page = 4
 rect = [395, 395, 525, 435]
 file = "signature.png"
+# z = 9                    # stacking override: higher paints later (on top)
 ```
+
+Entries paint in layers: images at the bottom, then check marks, then text —
+so a signature scan with an opaque white background cannot eat the name
+written next to it. Within a layer, file order is paint order. The optional
+`z` overrides all of it when a description needs an unusual stacking; the web
+app writes it for you when you reorder the side panel by drag and drop.
 
 ### Two pitfalls of the coordinate system
 
