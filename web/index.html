@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pdf-flatfill — remplir un PDF non interactif</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css">
+<!-- pdf-lib is UMD-only: loaded as a classic script, used as the PDFLib global. -->
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+</head>
+<body>
+
+<!-- ===== Accueil ===== -->
+<section id="home" class="home">
+  <header class="home-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 13.5 8.5 8 M8.5 8 12.5 3.5 C13 3 13.5 3.5 13 4 L9 8.5 M8.5 8 3 13.5 4.5 9.5 Z" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      pdf-flatfill
+    </div>
+    <a class="home-source" href="https://github.com/JN0V/pdf-flatfill">Code source</a>
+  </header>
+
+  <div class="hero">
+    <p class="badge">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="4" y="10" width="16" height="10" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      100&nbsp;% local — aucune donnée envoyée
+    </p>
+    <h1>Remplissez un PDF non interactif</h1>
+    <p class="hero-sub">Posez du texte, des coches et des images sur la page, au millimètre.
+    Le formulaire ne quitte jamais votre navigateur.</p>
+
+    <div id="dropzone" class="dropzone">
+      <div class="dropzone-icon" aria-hidden="true">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 16V4M12 4 8 8M12 4l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </div>
+      <p class="dropzone-title">Déposez votre PDF ici</p>
+      <p class="dropzone-sub">ou déposez ensemble le PDF et sa description .toml pour reprendre</p>
+      <div class="dropzone-actions">
+        <button id="pick-files" class="btn btn-primary" type="button">Choisir un fichier</button>
+      </div>
+      <input id="file-input" type="file" accept=".pdf,.toml,image/png,image/jpeg" multiple hidden>
+    </div>
+
+    <ol class="steps">
+      <li><span class="step-num">1</span> Ouvrez le formulaire</li>
+      <li><span class="step-num">2</span> Cliquez pour placer vos réponses</li>
+      <li><span class="step-num">3</span> Téléchargez le PDF rempli</li>
+    </ol>
+  </div>
+
+  <footer class="home-footer">
+    Vos réponses sont enregistrées dans un fichier .toml lisible, à garder à côté du PDF.
+  </footer>
+</section>
+
+<!-- ===== Éditeur ===== -->
+<section id="editor" class="editor" hidden>
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="brand-mark" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 13.5 8.5 8 M8.5 8 12.5 3.5 C13 3 13.5 3.5 13 4 L9 8.5 M8.5 8 3 13.5 4.5 9.5 Z" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span class="file-chip">
+        <span id="file-name">document.pdf</span>
+        <span id="file-pages" class="file-pages"></span>
+      </span>
+    </div>
+
+    <div class="tools" role="radiogroup" aria-label="Outil">
+      <button class="tool is-active" type="button" data-tool="text">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 5h14M12 5v14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        Texte
+      </button>
+      <button class="tool" type="button" data-tool="check">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17 19 6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Coche
+      </button>
+      <button class="tool" type="button" data-tool="image">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="9.5" r="1.6" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 17.5 9.5 13l4 3.5 3-2.5 3 2.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Image
+      </button>
+    </div>
+
+    <div class="topbar-right">
+      <button id="export-toml" class="btn btn-ghost" type="button">Exporter .toml</button>
+      <button id="generate" class="btn btn-primary" type="button">Générer le PDF</button>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <div id="viewer" class="viewer">
+      <div id="sheet" class="sheet">
+        <canvas id="page-canvas"></canvas>
+        <div id="overlay" class="overlay"></div>
+      </div>
+
+      <div class="pager">
+        <button id="page-prev" class="pager-btn" type="button" aria-label="Page précédente">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M14 6l-6 6 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <span class="pager-label">Page <strong id="page-current">1</strong> / <span id="page-count">1</span></span>
+        <button id="page-next" class="pager-btn" type="button" aria-label="Page suivante">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M10 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <span class="pager-sep"></span>
+        <button id="zoom-out" class="pager-btn" type="button" aria-label="Zoom arrière">−</button>
+        <span id="zoom-label" class="pager-zoom">100&nbsp;%</span>
+        <button id="zoom-in" class="pager-btn" type="button" aria-label="Zoom avant">+</button>
+      </div>
+    </div>
+
+    <aside class="panel">
+      <div class="panel-head">
+        Entrées <span id="entry-count" class="panel-count">· 0</span>
+      </div>
+      <ul id="entry-list" class="entry-list"></ul>
+
+      <div class="style-box">
+        <div class="style-title">Style par défaut</div>
+        <label class="style-row">Encre
+          <select id="style-ink">
+            <option value="0.05,0.15,0.7" selected>Bleu encre</option>
+            <option value="0,0,0">Noir</option>
+          </select>
+        </label>
+        <label class="style-row">Police
+          <select id="style-font">
+            <option value="helv" selected>Helvetica</option>
+            <option value="tiro">Times</option>
+            <option value="cour">Courier</option>
+          </select>
+        </label>
+        <label class="style-row">Taille
+          <input id="style-size" type="number" min="4" max="72" step="1" value="10"> pt
+        </label>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Popover de placement -->
+  <div id="popover" class="popover" hidden>
+    <div class="popover-head">
+      <span id="popover-title">Nouveau texte</span>
+      <span id="popover-coords" class="popover-coords"></span>
+    </div>
+    <input id="popover-text" type="text" placeholder="Texte à poser" autocomplete="off">
+    <input id="popover-note" type="text" placeholder="Note — ex. « Prénom »" autocomplete="off">
+    <div class="popover-foot">
+      <label class="popover-size">Taille <input id="popover-size" type="number" min="4" max="72" step="1"></label>
+      <div>
+        <button id="popover-cancel" class="btn btn-ghost btn-sm" type="button">Annuler</button>
+        <button id="popover-place" class="btn btn-primary btn-sm" type="button">Placer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dialogue de génération -->
+  <div id="done" class="scrim" hidden>
+    <div class="dialog">
+      <div class="dialog-icon" aria-hidden="true">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17 19 6.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <h2>Votre PDF est prêt</h2>
+      <p id="done-summary" class="dialog-summary"></p>
+      <a id="done-pdf" class="download download-primary" download>
+        <span class="download-name" id="done-pdf-name"></span>
+        <span class="download-sub">Le formulaire, rempli</span>
+      </a>
+      <a id="done-toml" class="download" download>
+        <span class="download-name" id="done-toml-name"></span>
+        <span class="download-sub">Vos réponses, pour reprendre plus tard</span>
+      </a>
+      <p class="dialog-hint">Gardez le fichier .toml dans le même dossier que le PDF d'origine :
+      rouvrez les deux ensemble et tout sera déjà en place.</p>
+      <button id="done-close" class="btn btn-ghost" type="button">Revenir à l'édition</button>
+    </div>
+  </div>
+
+  <input id="image-input" type="file" accept="image/png,image/jpeg" hidden>
+</section>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

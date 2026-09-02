@@ -172,12 +172,35 @@ Finding coordinates is a matter of successive approximation: put down a value,
 `--dry-run` to check the shape, then generate and look. The `note = "..."`
 fields exist for exactly that — finding your way on the third pass.
 
+## Web app
+
+`web/` holds a browser front-end over the same TOML format: open a PDF, click
+to place text, check marks and images, download the filled PDF and its
+description. Everything runs client-side — pdf.js renders the page, pdf-lib
+paints the output — so no byte ever leaves the browser, which is the point for
+forms full of personal data.
+
+It is plain static files with pinned CDN dependencies, no build step. Serve it
+any way you like:
+
+```bash
+python3 -m http.server -d web       # http://localhost:8000
+```
+
+or through GitHub Pages: the provided workflow deploys `web/` on every push,
+once Pages is enabled in the repository settings (Settings → Pages → Source:
+GitHub Actions).
+
+The CLI stays the headless reference. A description written by one is read by
+the other; the coordinate conventions (points, top-left origin, baseline `y`,
+1-indexed pages) are identical by construction.
+
 ## Roadmap
 
 **A graphical coordinate picker.** Hand-writing `x` and `y` is the one genuinely
 tedious part of this tool, and successive approximation is a poor substitute for
-seeing the page. The plan is a small GUI that renders the PDF, lets you click
-where a value goes, and writes the TOML for you.
+seeing the page. The web app above is the first cut of this: it renders the PDF,
+lets you click where a value goes, and writes the TOML for you.
 
 The TOML stays the storage format — this matters. A description remains
 diffable, reviewable and editable by hand, the CLI keeps working headless and in
