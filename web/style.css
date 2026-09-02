@@ -388,6 +388,18 @@ button { font: inherit; cursor: pointer; }
   background: var(--surface);
 }
 .style-row input[type="number"] { width: 64px; }
+.ink-inputs { display: flex; align-items: center; gap: 6px; }
+.style-row input[type="color"] {
+  width: 34px; height: 28px;
+  padding: 2px;
+  cursor: pointer;
+}
+.ink-hex {
+  width: 86px;
+  font-family: var(--mono) !important;
+  font-size: 12px !important;
+  text-transform: uppercase;
+}
 
 /* ===== Popover ===== */
 

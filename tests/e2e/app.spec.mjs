@@ -102,6 +102,16 @@ test.describe.serial('editing journey', () => {
   });
 
   test('the default style adjusts', async () => {
+    // Any ink color, through the hex field (synced with the color picker).
+    await page.fill('#style-ink-hex', '#000000');
+    await page.locator('#style-ink-hex').dispatchEvent('change');
+    await expect(page.locator('#style-ink')).toHaveValue('#000000');
+    await expect(page.locator('.placed').first()).toHaveCSS('color', 'rgb(0, 0, 0)');
+    // An invalid hex reverts to the current color.
+    await page.fill('#style-ink-hex', 'nope');
+    await page.locator('#style-ink-hex').dispatchEvent('change');
+    await expect(page.locator('#style-ink-hex')).toHaveValue('#000000');
+
     await page.locator('#style-size').fill('12');
     await page.locator('#style-size').dispatchEvent('change');
     // A second text placed at the default size carries no size of its own.
@@ -214,7 +224,7 @@ test.describe.serial('editing journey', () => {
 
     expect(form.source).toBe('formulaire.pdf');
     expect(form.output).toBe('formulaire-rempli.pdf');
-    expect(form.style).toEqual({ ink: [0.05, 0.15, 0.7], font: 'helv', size: 12 });
+    expect(form.style).toEqual({ ink: [0, 0, 0], font: 'helv', size: 12 });
     expect(form.text).toEqual([
       { page: 1, x: 100, y: 166.7, size: 13, font: 'tibo', text: 'DURAND', note: 'Nom' },
       { page: 1, x: 320, y: 176.7, text: 'Marie' },

@@ -1,3 +1,5 @@
+<img src="web/favicon.svg" width="64" alt="" align="left">
+
 # pdf-flatfill
 
 Fill in **non-interactive** PDF forms: lay text, check marks and images onto the

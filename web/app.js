@@ -111,6 +111,7 @@ const els = {
   popoverPlace: $('popover-place'),
   popoverMarkRow: $('popover-mark-row'), popoverMark: $('popover-mark'),
   fontInput: $('font-input'), styleFont: $('style-font'),
+  styleInk: $('style-ink'), styleInkHex: $('style-ink-hex'),
   fontPicker: $('font-picker'), fontPickerFilter: $('font-picker-filter'),
   fontPickerList: $('font-picker-list'), fontPickerCancel: $('font-picker-cancel'),
   doneFonts: $('done-fonts'),
@@ -912,8 +913,20 @@ function changeZoom(delta) {
   render();
 }
 
+// The ink travels as 0-1 RGB in the TOML; the pickers speak hex.
+function inkToHex([r, g, b]) {
+  return `#${[r, g, b].map((v) => Math.round(v * 255).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function hexToInk(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  return [0, 2, 4].map((i) => Math.round(parseInt(m[1].slice(i, i + 2), 16) / 255 * 1000) / 1000);
+}
+
 function syncStyleInputs() {
-  $('style-ink').value = state.style.ink.join(',');
+  els.styleInk.value = inkToHex(state.style.ink);
+  els.styleInkHex.value = inkToHex(state.style.ink).toUpperCase();
   // Custom families have their own option; an imported bold/italic base-14
   // variant has none and is kept as-is in state and on export.
   els.styleFont.value = state.style.font;
@@ -921,9 +934,19 @@ function syncStyleInputs() {
   $('style-size').value = state.style.size;
 }
 
-$('style-ink').addEventListener('change', (e) => {
-  state.style.ink = e.target.value.split(',').map(Number);
+els.styleInk.addEventListener('input', (e) => {
+  state.style.ink = hexToInk(e.target.value);
+  els.styleInkHex.value = e.target.value.toUpperCase();
   renderOverlay();
+});
+els.styleInkHex.addEventListener('change', (e) => {
+  const ink = hexToInk(e.target.value);
+  if (ink) {
+    state.style.ink = ink;
+    els.styleInk.value = inkToHex(ink);
+    renderOverlay();
+  }
+  e.target.value = inkToHex(state.style.ink).toUpperCase();
 });
 els.styleFont.addEventListener('change', (e) => {
   const value = e.target.value;
