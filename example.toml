@@ -6,6 +6,9 @@
 #
 # Run:  fill-pdf my-form.toml --dry-run     (check without writing)
 #       fill-pdf my-form.toml
+#
+# The web app reads and writes this same format: point it at the PDF and the
+# .toml together and everything falls back into place.
 
 # Paths are relative to THIS FILE's directory, not to the current directory.
 source = "blank-form.pdf"
@@ -13,8 +16,15 @@ output = "filled-form.pdf"
 
 [style]
 ink  = [0.05, 0.15, 0.7]   # RGB from 0 to 1 — ink blue
-font = "helv"              # PyMuPDF built-in font
-size = 10                  # default size, overridable entry by entry
+font = "helv"              # PyMuPDF base-14 name: helv, tiro, cour, tibo…
+size = 10                  # ink, font and size are all overridable entry by entry
+# font = "Homemade Apple"           # …or any font, from a file living next
+# fontfile = "homemade-apple.woff"  # to this description (TTF, OTF or WOFF)
+
+# Entries paint in layers: images at the bottom, then check marks, then text —
+# a signature scan's opaque background cannot eat the name written next to it.
+# An optional  z = <integer>  on any entry overrides that order: higher paints
+# later, i.e. on top. The web app writes it for you when you reorder its list.
 
 # --- Text -------------------------------------------------------------------
 # page is 1-INDEXED: the first page of the PDF is numbered 1, as in a viewer.
@@ -36,6 +46,9 @@ y = 277
 size = 11
 text = "Alex"
 note = "First name"
+# ink = [0.8, 0, 0]                 # this one entry in red
+# font = "Homemade Apple"           # a signature wants a handwriting font;
+# fontfile = "homemade-apple.woff"  # font and fontfile work per entry too
 
 # --- Check marks ------------------------------------------------------------
 # A cross laid down like text: these forms have no real fields.
@@ -47,6 +60,8 @@ y = 332
 size = 11
 note = "Ms. checkbox"
 # mark = "X"        # uncomment for a different mark
+# mark = "3"        # with font = "zadb" (ZapfDingbats): a real glyph —
+# font = "zadb"     # "3" ✓, "7" ✗, "l" a filled dot
 
 # --- Images -----------------------------------------------------------------
 # rect = [x0, y0, x1, y1], top left corner then bottom right corner.
@@ -57,3 +72,4 @@ rect = [395, 395, 525, 435]
 file = "signature.png"
 note = "Signature"
 # keep_proportion = true
+# z = 9             # force this image ABOVE the text layers
