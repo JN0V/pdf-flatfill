@@ -1,4 +1,4 @@
-/* Palette et rythme calqués sur les maquettes (canvas Claude Design). */
+/* Palette and rhythm taken from the mockups (Claude Design canvas). */
 :root {
   --bg: #F6F6F7;
   --surface: #FFFFFF;
@@ -57,7 +57,7 @@ button { font: inherit; cursor: pointer; }
   flex-shrink: 0;
 }
 
-/* ===== Accueil ===== */
+/* ===== Home ===== */
 
 .home {
   min-height: 100vh;
@@ -157,7 +157,7 @@ button { font: inherit; cursor: pointer; }
   padding: 0 16px;
 }
 
-/* ===== Éditeur ===== */
+/* ===== Editor ===== */
 
 .editor {
   height: 100vh;
@@ -280,7 +280,7 @@ button { font: inherit; cursor: pointer; }
 }
 
 .pager {
-  /* Centrée sur la zone de visualisation (viewport moins le panneau de 320px). */
+  /* Centred on the viewing area (viewport minus the 320px panel). */
   position: fixed;
   bottom: 18px;
   left: calc((100vw - 320px) / 2);
@@ -424,7 +424,7 @@ button { font: inherit; cursor: pointer; }
   background: var(--surface);
   min-width: 0;
 }
-/* Une seule ligne, dans toutes les langues : la suppression est une icône. */
+/* One single line, in every language: deletion is an icon. */
 .popover-foot { display: flex; align-items: center; gap: 8px; }
 .popover-spacer { flex-grow: 1; }
 .btn-icon-danger {
@@ -448,7 +448,7 @@ button { font: inherit; cursor: pointer; }
   border-radius: 7px;
 }
 
-/* ===== Dialogue de génération ===== */
+/* ===== Generation dialog ===== */
 
 .scrim {
   position: fixed; inset: 0;

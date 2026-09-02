@@ -1,6 +1,6 @@
-// Chaînes de l'interface. La langue vient du navigateur, se change dans
-// l'interface, et survit dans localStorage. Les .toml, eux, restent neutres :
-// seule l'interface est traduite, jamais le format.
+// Interface strings. The language comes from the browser, can be changed in
+// the interface, and survives in localStorage. The .toml files stay neutral:
+// only the interface is translated, never the format.
 
 export const LANGS = {
   fr: 'Français',
@@ -219,7 +219,7 @@ export let lang = (() => {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved && translations[saved]) return saved;
-  } catch { /* stockage indisponible : détection seule */ }
+  } catch { /* storage unavailable: detection only */ }
   const nav = (navigator.language || 'en').slice(0, 2).toLowerCase();
   return translations[nav] ? nav : 'en';
 })();
@@ -230,7 +230,7 @@ export function t(key, vars) {
   return str;
 }
 
-// n unités, avec le bon pluriel : « 2 textes », "1 check", « 3 Bilder ».
+// n units, correctly pluralized: "2 textes", "1 check", "3 Bilder".
 export function tn(n, unit) {
   return `${n} ${t(n > 1 ? `${unit}N` : `${unit}1`)}`;
 }
@@ -238,11 +238,11 @@ export function tn(n, unit) {
 export function setLang(next) {
   if (!translations[next]) return;
   lang = next;
-  try { localStorage.setItem(STORAGE_KEY, next); } catch { /* tant pis */ }
+  try { localStorage.setItem(STORAGE_KEY, next); } catch { /* too bad */ }
   applyStatic();
 }
 
-// Traduit tout le HTML statique : texte, placeholders, aria-labels.
+// Translates all static HTML: text, placeholders, aria-labels.
 export function applyStatic() {
   document.documentElement.lang = lang;
   document.title = `pdf-flatfill — ${t('title')}`;

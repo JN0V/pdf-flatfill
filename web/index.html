@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -13,7 +13,7 @@
 </head>
 <body>
 
-<!-- ===== Accueil ===== -->
+<!-- ===== Home ===== -->
 <section id="home" class="home">
   <header class="home-header">
     <div class="brand">
@@ -28,44 +28,43 @@
         <option value="es">Español</option>
         <option value="it">Italiano</option>
       </select>
-      <a class="home-source" href="https://github.com/JN0V/pdf-flatfill" data-i18n="source">Code source</a>
+      <a class="home-source" href="https://github.com/JN0V/pdf-flatfill" data-i18n="source">Source code</a>
     </div>
   </header>
 
   <div class="hero">
     <p class="badge">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="4" y="10" width="16" height="10" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      <span data-i18n="badge">100&nbsp;% local — aucune donnée envoyée</span>
+      <span data-i18n="badge">100% local — nothing is uploaded</span>
     </p>
-    <h1 data-i18n="title">Remplissez un PDF non interactif</h1>
-    <p class="hero-sub" data-i18n="sub">Posez du texte, des coches et des images sur la page, au millimètre.
-    Le formulaire ne quitte jamais votre navigateur.</p>
+    <h1 data-i18n="title">Fill in a non-interactive PDF</h1>
+    <p class="hero-sub" data-i18n="sub">Lay text, check marks and images onto the page, to the millimetre. The form never leaves your browser.</p>
 
     <div id="dropzone" class="dropzone">
       <div class="dropzone-icon" aria-hidden="true">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 16V4M12 4 8 8M12 4l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       </div>
-      <p class="dropzone-title" data-i18n="dropTitle">Déposez votre PDF ici</p>
-      <p class="dropzone-sub" data-i18n="dropSub">ou déposez ensemble le PDF et sa description .toml pour reprendre</p>
+      <p class="dropzone-title" data-i18n="dropTitle">Drop your PDF here</p>
+      <p class="dropzone-sub" data-i18n="dropSub">or drop the PDF together with its .toml description to resume</p>
       <div class="dropzone-actions">
-        <button id="pick-files" class="btn btn-primary" type="button" data-i18n="choose">Choisir un fichier</button>
+        <button id="pick-files" class="btn btn-primary" type="button" data-i18n="choose">Choose a file</button>
       </div>
       <input id="file-input" type="file" accept=".pdf,.toml,image/png,image/jpeg" multiple hidden>
     </div>
 
     <ol class="steps">
-      <li><span class="step-num">1</span> <span data-i18n="step1">Ouvrez le formulaire</span></li>
-      <li><span class="step-num">2</span> <span data-i18n="step2">Cliquez pour placer vos réponses</span></li>
-      <li><span class="step-num">3</span> <span data-i18n="step3">Téléchargez le PDF rempli</span></li>
+      <li><span class="step-num">1</span> <span data-i18n="step1">Open the form</span></li>
+      <li><span class="step-num">2</span> <span data-i18n="step2">Click to place your answers</span></li>
+      <li><span class="step-num">3</span> <span data-i18n="step3">Download the filled PDF</span></li>
     </ol>
   </div>
 
   <footer class="home-footer" data-i18n="footerHint">
-    Vos réponses sont enregistrées dans un fichier .toml lisible, à garder à côté du PDF.
+    Your answers are saved in a readable .toml file, to keep next to the PDF.
   </footer>
 </section>
 
-<!-- ===== Éditeur ===== -->
+<!-- ===== Editor ===== -->
 <section id="editor" class="editor" hidden>
   <header class="topbar">
     <div class="topbar-left">
@@ -76,14 +75,14 @@
       </span>
     </div>
 
-    <div class="tools" role="radiogroup" aria-label="Outil">
+    <div class="tools" role="radiogroup" aria-label="Tool">
       <button class="tool is-active" type="button" data-tool="text">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 5h14M12 5v14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <span data-i18n="toolText">Texte</span>
+        <span data-i18n="toolText">Text</span>
       </button>
       <button class="tool" type="button" data-tool="check">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17 19 6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span data-i18n="toolCheck">Coche</span>
+        <span data-i18n="toolCheck">Check</span>
       </button>
       <button class="tool" type="button" data-tool="image">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="9.5" r="1.6" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 17.5 9.5 13l4 3.5 3-2.5 3 2.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -92,8 +91,8 @@
     </div>
 
     <div class="topbar-right">
-      <button id="export-toml" class="btn btn-ghost" type="button" data-i18n="exportToml">Exporter .toml</button>
-      <button id="generate" class="btn btn-primary" type="button" data-i18n="generate">Générer le PDF</button>
+      <button id="export-toml" class="btn btn-ghost" type="button" data-i18n="exportToml">Export .toml</button>
+      <button id="generate" class="btn btn-primary" type="button" data-i18n="generate">Generate the PDF</button>
     </div>
   </header>
 
@@ -105,42 +104,42 @@
       </div>
 
       <div class="pager">
-        <button id="page-prev" class="pager-btn" type="button" data-i18n-aria="prevPage" aria-label="Page précédente">
+        <button id="page-prev" class="pager-btn" type="button" data-i18n-aria="prevPage" aria-label="Previous page">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M14 6l-6 6 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <span class="pager-label"><span data-i18n="page">Page</span> <strong id="page-current">1</strong> / <span id="page-count">1</span></span>
-        <button id="page-next" class="pager-btn" type="button" data-i18n-aria="nextPage" aria-label="Page suivante">
+        <button id="page-next" class="pager-btn" type="button" data-i18n-aria="nextPage" aria-label="Next page">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M10 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <span class="pager-sep"></span>
-        <button id="zoom-out" class="pager-btn" type="button" data-i18n-aria="zoomOut" aria-label="Zoom arrière">−</button>
+        <button id="zoom-out" class="pager-btn" type="button" data-i18n-aria="zoomOut" aria-label="Zoom out">−</button>
         <span id="zoom-label" class="pager-zoom">100&nbsp;%</span>
-        <button id="zoom-in" class="pager-btn" type="button" data-i18n-aria="zoomIn" aria-label="Zoom avant">+</button>
+        <button id="zoom-in" class="pager-btn" type="button" data-i18n-aria="zoomIn" aria-label="Zoom in">+</button>
       </div>
     </div>
 
     <aside class="panel">
       <div class="panel-head">
-        <span data-i18n="entries">Entrées</span> <span id="entry-count" class="panel-count">· 0</span>
+        <span data-i18n="entries">Entries</span> <span id="entry-count" class="panel-count">· 0</span>
       </div>
       <ul id="entry-list" class="entry-list"></ul>
 
       <div class="style-box">
-        <div class="style-title" data-i18n="styleTitle">Style par défaut</div>
-        <label class="style-row"><span data-i18n="ink">Encre</span>
+        <div class="style-title" data-i18n="styleTitle">Default style</div>
+        <label class="style-row"><span data-i18n="ink">Ink</span>
           <select id="style-ink">
-            <option value="0.05,0.15,0.7" selected data-i18n="inkBlue">Bleu encre</option>
-            <option value="0,0,0" data-i18n="inkBlack">Noir</option>
+            <option value="0.05,0.15,0.7" selected data-i18n="inkBlue">Ink blue</option>
+            <option value="0,0,0" data-i18n="inkBlack">Black</option>
           </select>
         </label>
-        <label class="style-row"><span data-i18n="font">Police</span>
+        <label class="style-row"><span data-i18n="font">Font</span>
           <select id="style-font">
             <option value="helv" selected>Helvetica</option>
             <option value="tiro">Times</option>
             <option value="cour">Courier</option>
           </select>
         </label>
-        <label class="style-row"><span data-i18n="size">Taille</span>
+        <label class="style-row"><span data-i18n="size">Size</span>
           <input id="style-size" type="number" min="4" max="72" step="1" value="10"> pt
         </label>
         <label class="style-row">
@@ -157,65 +156,64 @@
     </aside>
   </div>
 
-  <!-- Popover de placement et d'édition -->
+  <!-- Placement and edit popover -->
   <div id="popover" class="popover" hidden>
     <div class="popover-head">
-      <span id="popover-title">Nouveau texte</span>
+      <span id="popover-title">New text</span>
       <span id="popover-coords" class="popover-coords"></span>
     </div>
-    <input id="popover-text" type="text" placeholder="Texte à poser" autocomplete="off">
+    <input id="popover-text" type="text" placeholder="Text to place" autocomplete="off">
     <div id="popover-mark-row" class="popover-row" hidden>
-      <select id="popover-mark" aria-label="Style de coche">
-        <option value="x" data-i18n="markX">Croix (X)</option>
-        <option value="check" data-i18n="markCheck">Coche ✓</option>
-        <option value="cross" data-i18n="markCross">Croix ✗</option>
-        <option value="bullet" data-i18n="markBullet">Point ●</option>
-        <option value="custom" data-i18n="markCustom">Personnalisée…</option>
+      <select id="popover-mark" aria-label="Check mark style">
+        <option value="x" data-i18n="markX">Cross (X)</option>
+        <option value="check" data-i18n="markCheck">Check ✓</option>
+        <option value="cross" data-i18n="markCross">Cross ✗</option>
+        <option value="bullet" data-i18n="markBullet">Dot ●</option>
+        <option value="custom" data-i18n="markCustom">Custom…</option>
       </select>
     </div>
-    <input id="popover-note" type="text" placeholder="Note — ex. « Prénom »" autocomplete="off">
+    <input id="popover-note" type="text" placeholder="Note" autocomplete="off">
     <div id="popover-style-row" class="popover-row">
-      <label class="popover-size"><span data-i18n="size">Taille</span> <input id="popover-size" type="number" min="4" max="72" step="1"></label>
-      <select id="popover-font" aria-label="Police">
-        <option value="" data-i18n="fontDefault">Police par défaut</option>
+      <label class="popover-size"><span data-i18n="size">Size</span> <input id="popover-size" type="number" min="4" max="72" step="1"></label>
+      <select id="popover-font" aria-label="Font">
+        <option value="" data-i18n="fontDefault">Default font</option>
         <option value="helv">Helvetica</option>
-        <option value="hebo">Helvetica gras</option>
-        <option value="heit">Helvetica italique</option>
+        <option value="hebo">Helvetica bold</option>
+        <option value="heit">Helvetica italic</option>
         <option value="tiro">Times</option>
-        <option value="tibo">Times gras</option>
-        <option value="tiit">Times italique</option>
+        <option value="tibo">Times bold</option>
+        <option value="tiit">Times italic</option>
         <option value="cour">Courier</option>
       </select>
     </div>
     <div class="popover-foot">
-      <button id="popover-delete" class="btn-icon-danger" type="button" hidden data-i18n-aria="delete" aria-label="Supprimer">
+      <button id="popover-delete" class="btn-icon-danger" type="button" hidden data-i18n-aria="delete" aria-label="Delete">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13a1.5 1.5 0 0 0 1.5 1.4h7A1.5 1.5 0 0 0 17 20l1-13M9 7V5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 5v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <span class="popover-spacer"></span>
-      <button id="popover-cancel" class="btn btn-ghost btn-sm" type="button" data-i18n="cancel">Annuler</button>
-      <button id="popover-place" class="btn btn-primary btn-sm" type="button">Placer</button>
+      <button id="popover-cancel" class="btn btn-ghost btn-sm" type="button" data-i18n="cancel">Cancel</button>
+      <button id="popover-place" class="btn btn-primary btn-sm" type="button">Place</button>
     </div>
   </div>
 
-  <!-- Dialogue de génération -->
+  <!-- Generation dialog -->
   <div id="done" class="scrim" hidden>
     <div class="dialog">
       <div class="dialog-icon" aria-hidden="true">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17 19 6.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
-      <h2 data-i18n="doneTitle">Votre PDF est prêt</h2>
+      <h2 data-i18n="doneTitle">Your PDF is ready</h2>
       <p id="done-summary" class="dialog-summary"></p>
       <a id="done-pdf" class="download download-primary" download>
         <span class="download-name" id="done-pdf-name"></span>
-        <span class="download-sub" data-i18n="donePdfSub">Le formulaire, rempli</span>
+        <span class="download-sub" data-i18n="donePdfSub">The form, filled in</span>
       </a>
       <a id="done-toml" class="download" download>
         <span class="download-name" id="done-toml-name"></span>
-        <span class="download-sub" data-i18n="doneTomlSub">Vos réponses, pour reprendre plus tard</span>
+        <span class="download-sub" data-i18n="doneTomlSub">Your answers, to resume later</span>
       </a>
-      <p class="dialog-hint" data-i18n="doneHint">Gardez le fichier .toml dans le même dossier que le PDF d'origine :
-      rouvrez les deux ensemble et tout sera déjà en place.</p>
-      <button id="done-close" class="btn btn-ghost" type="button" data-i18n="doneBack">Revenir à l'édition</button>
+      <p class="dialog-hint" data-i18n="doneHint">Keep the .toml file in the same folder as the original PDF: open both together and everything falls back into place.</p>
+      <button id="done-close" class="btn btn-ghost" type="button" data-i18n="doneBack">Back to editing</button>
     </div>
   </div>
 

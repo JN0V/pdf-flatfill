@@ -1,12 +1,12 @@
-// pdf-flatfill web — front-end d'édition au-dessus du même format TOML que la CLI.
+// pdf-flatfill web — an editing front-end over the same TOML format as the CLI.
 //
-// Conventions héritées du moteur Python, à préserver à l'identique :
-//   - coordonnées en points PDF, origine en HAUT à gauche ;
-//   - `y` est la ligne de base du texte, pas son sommet ;
-//   - `page` est 1-indexée ;
-//   - [[image]] a un `rect` [x0, y0, x1, y1] et garde ses proportions par défaut ;
-//   - `size` et `font` sont des défauts de [style], surchargeables par entrée.
-// Tout est local : aucun octet ne quitte le navigateur.
+// Conventions inherited from the Python engine, to preserve exactly:
+//   - coordinates in PDF points, origin at the TOP left;
+//   - `y` is the text baseline, not its top;
+//   - `page` is 1-indexed;
+//   - [[image]] has a `rect` [x0, y0, x1, y1] and keeps proportions by default;
+//   - `size` and `font` are [style] defaults, overridable per entry.
+// Everything is local: no byte ever leaves the browser.
 
 import * as pdfjsLib from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs';
 import { parse as parseToml } from 'https://cdn.jsdelivr.net/npm/smol-toml@1.3.1/+esm';
@@ -18,11 +18,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 const DEFAULT_INK = [0.05, 0.15, 0.7];
 const DEFAULT_FONT = 'helv';
 const DEFAULT_SIZE = 10;
-const IMAGE_DEFAULT_WIDTH = 130; // pt — largeur posée au clic, ajustable ensuite
-const DRAG_THRESHOLD = 3;        // px avant qu'un clic devienne un glisser
+const IMAGE_DEFAULT_WIDTH = 130; // pt — width placed on click, adjustable afterwards
+const DRAG_THRESHOLD = 3;        // px before a click becomes a drag
 
-// Noms de police PyMuPDF -> polices standard pdf-lib (mêmes chaînes que
-// son enum StandardFonts, acceptées telles quelles par embedFont).
+// PyMuPDF font names -> pdf-lib standard fonts (the same strings as its
+// StandardFonts enum, accepted as-is by embedFont).
 const FONT_MAP = {
   helv: 'Helvetica', hebo: 'Helvetica-Bold', heit: 'Helvetica-Oblique', hebi: 'Helvetica-BoldOblique',
   cour: 'Courier', cobo: 'Courier-Bold', coit: 'Courier-Oblique', cobi: 'Courier-BoldOblique',
@@ -30,9 +30,9 @@ const FONT_MAP = {
   symb: 'Symbol', zadb: 'ZapfDingbats',
 };
 
-// Styles de coche : ZapfDingbats (« zadb », l'une des 14 polices standard)
-// fournit de vrais glyphes — le TOML porte le caractère source, l'écran
-// affiche son équivalent Unicode.
+// Check mark styles: ZapfDingbats ("zadb", one of the 14 standard fonts)
+// provides real glyphs — the TOML carries the source character, the screen
+// shows its Unicode equivalent.
 const MARK_PRESETS = {
   x: {},
   check: { mark: '3', font: 'zadb' },
@@ -58,7 +58,7 @@ function markPresetOf(entry) {
   return (entry.mark === undefined || entry.mark === 'X') ? 'x' : 'custom';
 }
 
-// Rendu approchant de ces mêmes polices pour la surcouche d'édition.
+// Approximate rendering of those same fonts for the editing overlay.
 const FONT_CSS = {
   helv: ['Helvetica, Arial, sans-serif', 400, 'normal'],
   hebo: ['Helvetica, Arial, sans-serif', 700, 'normal'],
@@ -75,18 +75,18 @@ const FONT_CSS = {
 };
 
 const state = {
-  pdfBytes: null,      // Uint8Array du PDF source
-  pdfDoc: null,        // document pdf.js
+  pdfBytes: null,      // Uint8Array of the source PDF
+  pdfDoc: null,        // pdf.js document
   sourceName: 'document.pdf',
-  outputName: null,    // conservé si repris d'un .toml
+  outputName: null,    // kept when resumed from a .toml
   page: 1,
   scale: 1,
   tool: 'text',
   style: { ink: [...DEFAULT_INK], font: DEFAULT_FONT, size: DEFAULT_SIZE },
   entries: [],         // {kind, page, x, y, text?, mark?, size?, font?, rect?, file?, note?, image?}
-  selected: null,      // index dans entries
-  pendingImage: null,  // {bytes, mime, width, height, url, name} en attente de clic
-  attachTarget: null,  // index d'une entrée image dont le fichier manque
+  selected: null,      // index into entries
+  pendingImage: null,  // {bytes, mime, width, height, url, name} awaiting a placement click
+  attachTarget: null,  // index of an image entry whose file is missing
 };
 
 const $ = (id) => document.getElementById(id);
@@ -109,7 +109,7 @@ const els = {
   doneToml: $('done-toml'), doneTomlName: $('done-toml-name'),
 };
 
-// ---------------------------------------------------------------- chargement
+// ---------------------------------------------------------------- loading
 
 async function handleFiles(files) {
   let pdf = null, toml = null;
@@ -124,10 +124,10 @@ async function handleFiles(files) {
   if (pdf) {
     state.pdfBytes = new Uint8Array(await pdf.arrayBuffer());
     state.sourceName = pdf.name;
-    // pdf.js détache le buffer qu'on lui passe : il lui faut sa propre copie.
+    // pdf.js detaches the buffer it is given: it needs its own copy.
     state.pdfDoc = await pdfjsLib.getDocument({ data: state.pdfBytes.slice() }).promise;
     state.page = 1;
-    state.scale = 0; // recalculé au premier rendu (ajustement à la largeur)
+    state.scale = 0; // recomputed on first render (fit to width)
   }
   if (toml) {
     try {
@@ -175,7 +175,7 @@ function loadDescription(text) {
   for (const entry of form.image ?? []) {
     state.entries.push({
       kind: 'image', page: entry.page, rect: entry.rect.map(Number),
-      file: entry.file, note: entry.note, image: null, // octets à rattacher
+      file: entry.file, note: entry.note, image: null, // bytes to re-attach
     });
   }
   syncStyleInputs();
@@ -193,8 +193,8 @@ async function loadImage(file) {
   return { bytes, mime: file.type, width: img.naturalWidth, height: img.naturalHeight, url, name: file.name };
 }
 
-// Une image déposée/choisie rejoint l'entrée qui l'attend par son nom, sinon
-// elle attend un clic de placement.
+// A dropped/picked image joins the entry waiting for it by name, otherwise
+// it waits for a placement click.
 async function attachImageFile(file) {
   const image = await loadImage(file);
   const waiting = state.entries.findIndex((e) => e.kind === 'image' && !e.image && e.file === file.name);
@@ -210,7 +210,7 @@ async function attachImageFile(file) {
   }
 }
 
-// ---------------------------------------------------------------- rendu
+// ---------------------------------------------------------------- rendering
 
 let renderTask = null;
 
@@ -315,8 +315,8 @@ function select(index) {
     return;
   }
   renderOverlay();
-  // Surtout ne pas reconstruire la liste : un double-clic en cours perdrait
-  // son nœud entre les deux clics (et l'édition ne s'ouvrirait jamais).
+  // Never rebuild the list here: a double-click in progress would lose its
+  // node between the two clicks (and editing would never open).
   updatePanelSelection();
 }
 
@@ -326,10 +326,10 @@ function updatePanelSelection() {
   });
 }
 
-// ---------------------------------------------------------------- déplacement
+// ---------------------------------------------------------------- dragging
 
 let dragging = null;      // {index, mode: 'move'|'resize', startX, startY, orig, moved}
-let suppressClick = false; // le clic qui suit un glisser ne doit ni éditer ni placer
+let suppressClick = false; // the click following a drag must neither edit nor place
 
 function startDrag(event, index, mode) {
   if (event.button !== 0) return;
@@ -337,8 +337,8 @@ function startDrag(event, index, mode) {
   const entry = state.entries[index];
   dragging = {
     index, mode,
-    // L'élément traîné : mis à jour en place pendant le geste (pas de
-    // reconstruction, qui détruirait le nœud et perdrait le clic final).
+    // The dragged element: updated in place during the gesture (no rebuild,
+    // which would destroy the node and lose the final click).
     el: mode === 'resize' ? event.currentTarget.parentElement : event.currentTarget,
     startX: event.clientX, startY: event.clientY,
     orig: entry.kind === 'image' ? { rect: [...entry.rect] } : { x: entry.x, y: entry.y },
@@ -385,8 +385,8 @@ function onDragEnd() {
     const entry = state.entries[dragging.index];
     if (entry.kind === 'image') entry.rect = entry.rect.map(round1);
     else { entry.x = round1(entry.x); entry.y = round1(entry.y); }
-    // Le clic de relâchement arrive juste après le pointerup ; s'il n'arrive
-    // pas (cible détruite entre-temps), le drapeau se désarme tout seul.
+    // The release click lands right after pointerup; if it never does (the
+    // target died in between), the flag disarms itself.
     suppressClick = true;
     setTimeout(() => { suppressClick = false; }, 0);
     state.selected = dragging.index;
@@ -396,7 +396,7 @@ function onDragEnd() {
   dragging = null;
 }
 
-// ---------------------------------------------------------------- panneau
+// ---------------------------------------------------------------- panel
 
 const ICONS = {
   text: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 5h14M12 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
@@ -460,7 +460,7 @@ function renderPanel() {
       }
       select(index);
     });
-    // Double-clic : aller à l'entrée sur la page et l'éditer directement.
+    // Double-click: jump to the entry on the page and edit it directly.
     li.addEventListener('dblclick', () => {
       if (entry.kind === 'image' && !entry.image) return;
       openEntry(index);
@@ -469,7 +469,7 @@ function renderPanel() {
   });
 }
 
-// Sélectionne une entrée, change de page s'il le faut, puis ouvre l'édition.
+// Select an entry, switch pages if needed, then open the editor.
 async function openEntry(index) {
   const entry = state.entries[index];
   state.selected = index;
@@ -493,8 +493,8 @@ function removeEntry(index) {
 
 // ---------------------------------------------------------------- popover
 
-// popCtx : { mode: 'new-text', x, y } pour un placement,
-//          { mode: 'edit', index } pour une entrée existante.
+// popCtx: { mode: 'new-text', x, y } for a placement,
+//         { mode: 'edit', index } for an existing entry.
 let popCtx = null;
 
 els.overlay.addEventListener('click', (event) => {
@@ -532,8 +532,8 @@ els.overlay.addEventListener('click', (event) => {
 
 function openEditPopover(index) {
   const entry = state.entries[index];
-  // origFont : une police importée absente du sélecteur (ex. « hebi ») ne
-  // doit pas être perdue si l'utilisateur ne touche pas au champ.
+  // origFont: an imported font missing from the selector (e.g. "hebi") must
+  // not be lost when the user leaves the field untouched.
   popCtx = { mode: 'edit', index, origFont: entry.font };
   const common = {
     note: entry.note ?? '', deletable: true, action: t('save'),
@@ -588,7 +588,7 @@ function fillPopover(cfg) {
   els.popoverPlace.textContent = cfg.action;
 }
 
-// Style de coche : « Personnalisée… » révèle le champ libre.
+// Check mark style: "Custom…" reveals the free-text field.
 els.popoverMark.addEventListener('change', () => {
   const custom = els.popoverMark.value === 'custom';
   els.popoverText.hidden = !custom;
@@ -653,8 +653,8 @@ function submitPopover() {
   renderPanel();
 }
 
-// Les champs égaux au style par défaut ne sont pas répétés dans le TOML.
-// `font` absent = ne pas y toucher (les coches gèrent la leur via le preset).
+// Fields equal to the default style are not repeated in the TOML.
+// `font` absent = leave it alone (checks manage theirs via the preset).
 function applyStyleFields(entry, { note, size, font }) {
   if (note) entry.note = note; else delete entry.note;
   if (size !== state.style.size) entry.size = size; else delete entry.size;
@@ -697,7 +697,7 @@ function placeImage(x, y) {
   renderPanel();
 }
 
-// ---------------------------------------------------------------- barre d'outils
+// ---------------------------------------------------------------- toolbar
 
 document.querySelectorAll('.tool').forEach((button) => {
   button.addEventListener('click', () => {
@@ -728,8 +728,8 @@ function changeZoom(delta) {
 
 function syncStyleInputs() {
   $('style-ink').value = state.style.ink.join(',');
-  // Le sélecteur ne propose que les romains ; une variante grasse/italique
-  // importée est conservée telle quelle dans l'état et à l'export.
+  // The selector only offers the roman faces; an imported bold/italic
+  // variant is kept as-is in state and on export.
   if (['helv', 'tiro', 'cour'].includes(state.style.font)) $('style-font').value = state.style.font;
   $('style-size').value = state.style.size;
 }
@@ -752,8 +752,8 @@ $('style-size').addEventListener('change', (e) => {
 function round1(v) { return Math.round(v * 10) / 10; }
 function fmt(v) { return Number.isInteger(v) ? String(v) : v.toFixed(1); }
 
-// Caractères de contrôle interdits en clair dans une chaîne TOML basique
-// (tout C0 sauf \n et \t, plus DEL), construits sans littéraux de contrôle.
+// Control characters forbidden in plain form in a TOML basic string
+// (all C0 except \n and \t, plus DEL), built without control literals.
 const CONTROL_RE = new RegExp(
   '[' + [...Array(32).keys()].filter((i) => i !== 9 && i !== 10).concat(127)
     .map((i) => '\\u' + i.toString(16).padStart(4, '0')).join('') + ']',
@@ -772,13 +772,13 @@ function serializeToml() {
   out.push(`output = ${tomlString(outputName())}`);
   out.push('');
   out.push('[style]');
-  // Pas de fmt() ici : l'encre garde sa précision (0.05 n'est pas 0.1).
+  // No fmt() here: ink keeps its precision (0.05 is not 0.1).
   out.push(`ink  = [${state.style.ink.map(String).join(', ')}]`);
   out.push(`font = ${tomlString(state.style.font)}`);
   out.push(`size = ${fmt(state.style.size)}`);
 
-  // Groupées par type, comme à la lecture : export -> import -> export
-  // redonne le même fichier à l'octet près.
+  // Grouped by kind, as parsing does: export -> import -> export yields
+  // the same file byte for byte.
   const grouped = ['text', 'check', 'image']
     .flatMap((kind) => state.entries.filter((e) => e.kind === kind));
   for (const entry of grouped) {
@@ -817,7 +817,7 @@ function download(blob, name) {
   setTimeout(() => URL.revokeObjectURL(link.href), 60_000);
 }
 
-// ---------------------------------------------------------------- génération
+// ---------------------------------------------------------------- generation
 
 $('generate').addEventListener('click', async () => {
   const missing = state.entries.filter((e) => e.kind === 'image' && !e.image);
@@ -853,8 +853,8 @@ $('generate').addEventListener('click', async () => {
       const image = entry.image.mime === 'image/png'
         ? await doc.embedPng(entry.image.bytes)
         : await doc.embedJpg(entry.image.bytes);
-      // keep_proportion (défaut PyMuPDF) : l'image est ajustée dans le rect
-      // sans déformation, centrée.
+      // keep_proportion (PyMuPDF default): the image is fitted inside the
+      // rect without distortion, centred.
       const rectW = x1 - x0, rectH = y1 - y0;
       const ratio = Math.min(rectW / image.width, rectH / image.height);
       const w = image.width * ratio, h = image.height * ratio;
@@ -864,12 +864,12 @@ $('generate').addEventListener('click', async () => {
         width: w, height: h,
       });
     } else {
-      // Pour ZapfDingbats, pdf-lib encode depuis l'Unicode (« ✓ » -> octet
-      // 0x33) là où PyMuPDF prend l'octet brut (« 3 ») : le TOML garde
-      // l'octet brut du moteur, la traduction se fait ici.
+      // For ZapfDingbats, pdf-lib encodes from Unicode ("✓" -> byte 0x33)
+      // where PyMuPDF takes the raw byte ("3"): the TOML keeps the engine's
+      // raw byte, the translation happens here.
       page.drawText(entry.kind === 'check' ? markDisplay(entry) : entry.text, {
         x: entry.x,
-        y: pageHeight - entry.y, // y TOML : ligne de base depuis le HAUT
+        y: pageHeight - entry.y, // TOML y: baseline from the TOP
         size: entry.size ?? state.style.size,
         font: await getFont(entry.font ?? state.style.font),
         color: ink,
@@ -899,7 +899,7 @@ $('generate').addEventListener('click', async () => {
 $('done-close').addEventListener('click', () => { els.done.hidden = true; });
 els.done.addEventListener('click', (e) => { if (e.target === els.done) els.done.hidden = true; });
 
-// ---------------------------------------------------------------- entrées de fichiers
+// ---------------------------------------------------------------- file inputs
 
 $('pick-files').addEventListener('click', () => els.fileInput.click());
 els.fileInput.addEventListener('change', (e) => handleFiles([...e.target.files]));
@@ -924,7 +924,7 @@ els.dropzone.addEventListener('drop', (e) => {
   handleFiles([...e.dataTransfer.files]);
 });
 
-// ---------------------------------------------------------------- langue
+// ---------------------------------------------------------------- language
 
 document.querySelectorAll('.lang-select').forEach((select) => {
   select.addEventListener('change', (e) => {

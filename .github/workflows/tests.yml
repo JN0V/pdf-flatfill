@@ -32,8 +32,8 @@ jobs:
         working-directory: tests/e2e
         run: npx playwright test
 
-      # La boucle est fermée avec le moteur Python : la description exportée
-      # par la web app pendant les tests doit passer fill-pdf telle quelle.
+      # The loop is closed with the Python engine: the description the web
+      # app exported during the tests must pass fill-pdf verbatim.
       - name: CLI accepts the exported TOML
         run: |
           pip install pymupdf

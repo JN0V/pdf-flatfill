@@ -1,5 +1,5 @@
-// Parcours complet de la web app, du dépôt du PDF à la reprise d'une
-// description — chaque fonction visible de l'interface est exercée.
+// Full journey through the web app, from dropping the PDF to resuming a
+// description — every visible function of the interface is exercised.
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { parse as parseToml } from 'smol-toml';
@@ -11,21 +11,21 @@ test.beforeAll(async () => {
   ({ pdfPath, pngPath } = await makeFixtures());
 });
 
-test('un .toml seul est refusé avec un message clair', async ({ page }) => {
+test('a lone .toml is refused with a clear message', async ({ page }) => {
   await page.goto('/');
-  // Fermer l'alerte dès qu'elle surgit, sinon elle bloque la page.
+  // Dismiss the alert as soon as it pops, otherwise it blocks the page.
   const message = page.waitForEvent('dialog')
     .then(async (d) => { const m = d.message(); await d.dismiss(); return m; });
-  // Un .toml de test minimal suffit : c'est le refus qui est testé.
+  // A minimal test .toml is enough: the refusal is what is tested.
   await page.setInputFiles('#file-input', {
-    name: 'seul.toml', mimeType: 'application/toml',
+    name: 'alone.toml', mimeType: 'application/toml',
     buffer: Buffer.from('source = "x.pdf"\noutput = "y.pdf"\n'),
   });
   expect(await message).toContain('Il manque le PDF');
   await expect(page.locator('#editor')).toBeHidden();
 });
 
-test.describe.serial('parcours d’édition', () => {
+test.describe.serial('editing journey', () => {
   let page;
   let errors;
 
@@ -36,18 +36,18 @@ test.describe.serial('parcours d’édition', () => {
     page.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
   });
 
-  test('le PDF s’ouvre dans l’éditeur', async () => {
+  test('the PDF opens in the editor', async () => {
     await page.goto('/');
     await expect(page.locator('#dropzone')).toBeVisible();
     await page.setInputFiles('#file-input', pdfPath);
     await expect(page.locator('#editor')).toBeVisible();
     await expect(page.locator('#file-name')).toHaveText('formulaire.pdf');
     await expect(page.locator('#page-count')).toHaveText('4');
-    // Ajustement à la largeur : 1120px de zone moins les marges, plafonné à 150 %.
+    // Fit to width: 1120px of area minus margins, capped at 150%.
     await expect(page.locator('#zoom-label')).toHaveText(/150\s?%/);
   });
 
-  test('un texte se place au clic, avec taille et note', async () => {
+  test('a text places on click, with size and note', async () => {
     await page.click('#overlay', { position: { x: 150, y: 250 } });
     await expect(page.locator('#popover')).toBeVisible();
     await expect(page.locator('#popover-coords')).toHaveText('p.1 · x 100 · y 166.7');
@@ -62,7 +62,7 @@ test.describe.serial('parcours d’édition', () => {
     await expect(page.locator('.entry-note').first()).toHaveText('Nom');
   });
 
-  test('une coche se place, se supprime, se replace', async () => {
+  test('a check mark places, deletes, places again', async () => {
     await page.click('.tool[data-tool="check"]');
     await page.click('#overlay', { position: { x: 300, y: 400 } });
     await expect(page.locator('.entry')).toHaveCount(2);
@@ -77,7 +77,7 @@ test.describe.serial('parcours d’édition', () => {
     await expect(page.locator('#entry-count')).toHaveText('· 2');
   });
 
-  test('une image se place via le sélecteur de fichier', async () => {
+  test('an image places through the file picker', async () => {
     await page.click('.tool[data-tool="image"]');
     const chooser = page.waitForEvent('filechooser');
     await page.click('#overlay', { position: { x: 600, y: 300 } });
@@ -87,10 +87,10 @@ test.describe.serial('parcours d’édition', () => {
     await expect(page.locator('.entry-coords').nth(2)).toHaveText('p1 · rect');
   });
 
-  test('navigation de pages et zoom', async () => {
+  test('page navigation and zoom', async () => {
     await page.click('#page-next');
     await expect(page.locator('#page-current')).toHaveText('2');
-    await expect(page.locator('.placed')).toHaveCount(0); // les entrées sont sur la page 1
+    await expect(page.locator('.placed')).toHaveCount(0); // the entries live on page 1
     await page.click('#page-prev');
     await expect(page.locator('#page-current')).toHaveText('1');
     await expect(page.locator('.placed')).toHaveCount(2);
@@ -101,10 +101,10 @@ test.describe.serial('parcours d’édition', () => {
     await expect(page.locator('#zoom-label')).toHaveText(/150\s?%/);
   });
 
-  test('le style par défaut se règle', async () => {
+  test('the default style adjusts', async () => {
     await page.locator('#style-size').fill('12');
     await page.locator('#style-size').dispatchEvent('change');
-    // Un second texte placé à la taille par défaut ne porte pas de taille propre.
+    // A second text placed at the default size carries no size of its own.
     await page.click('.tool[data-tool="text"]');
     await page.click('#overlay', { position: { x: 450, y: 250 } });
     await expect(page.locator('#popover-size')).toHaveValue('12');
@@ -113,7 +113,7 @@ test.describe.serial('parcours d’édition', () => {
     await expect(page.locator('.entry')).toHaveCount(4);
   });
 
-  test('un texte existant s’édite : contenu, taille, police', async () => {
+  test('an existing text edits: content, size, font', async () => {
     await page.locator('.placed', { hasText: 'DUPONT' }).click();
     await expect(page.locator('#popover')).toBeVisible();
     await expect(page.locator('#popover-title')).toHaveText('Modifier le texte');
@@ -131,7 +131,7 @@ test.describe.serial('parcours d’édition', () => {
     await expect(page.locator('.entry-text').first()).toHaveText('DURAND');
   });
 
-  test('une entrée se déplace au glisser', async () => {
+  test('an entry moves by dragging', async () => {
     const marie = page.locator('.placed', { hasText: 'Marie' });
     const box = await marie.boundingBox();
     const cx = box.x + box.width / 2;
@@ -140,17 +140,17 @@ test.describe.serial('parcours d’édition', () => {
     await page.mouse.down();
     await page.mouse.move(cx + 30, cy + 15, { steps: 4 });
     await page.mouse.up();
-    // +30/+15 px à 150 % = +20/+10 pt.
+    // +30/+15 px at 150% = +20/+10 pt.
     await expect(page.locator('.entry', { hasText: 'Marie' }).locator('.entry-coords'))
       .toHaveText('p1 · 320,176.7');
-    // Le clic de relâchement ne doit pas ouvrir le popover d'édition.
+    // The release click must not open the edit popover.
     await expect(page.locator('#popover')).toBeHidden();
   });
 
-  test('une image se redimensionne par sa poignée', async () => {
-    await page.locator('.placed-image').click(); // sélectionne et ouvre l'édition
+  test('an image resizes by its handle', async () => {
+    await page.locator('.placed-image').click(); // selects and opens the editor
     await expect(page.locator('#popover-title')).toHaveText('Modifier l’image');
-    await page.keyboard.press('Escape'); // la sélection reste, la poignée aussi
+    await page.keyboard.press('Escape'); // selection stays, so does the handle
     const handle = page.locator('.resize-handle');
     await expect(handle).toBeVisible();
     const box = await handle.boundingBox();
@@ -158,21 +158,21 @@ test.describe.serial('parcours d’édition', () => {
     await page.mouse.down();
     await page.mouse.move(box.x + box.width / 2 + 30, box.y + box.height / 2 + 30, { steps: 4 });
     await page.mouse.up();
-    // Vérifié précisément sur le rect à l'export ; ici, la poignée a suivi.
+    // Asserted precisely on the exported rect; here, the handle followed.
     await expect(page.locator('.resize-handle')).toBeVisible();
   });
 
-  test('la coche change de style, une entrée se supprime depuis le popover', async () => {
+  test('the check mark changes style, an entry deletes from the popover', async () => {
     await page.locator('.placed', { hasText: 'X' }).click();
     await expect(page.locator('#popover-title')).toHaveText('Modifier la coche');
-    // Le champ libre reste caché tant que le style n'est pas « Personnalisée ».
+    // The free-text field stays hidden until the mark style is 'custom'.
     await expect(page.locator('#popover-text')).toBeHidden();
     await page.selectOption('#popover-mark', 'check');
     await page.click('#popover-place');
     await expect(page.locator('.placed', { hasText: '✓' })).toBeVisible();
     await expect(page.locator('.entry', { hasText: '✓' })).toBeVisible();
 
-    // Marque personnalisée sur une coche jetable, puis suppression.
+    // Custom mark on a throwaway check, then deletion.
     await page.click('.tool[data-tool="check"]');
     await page.click('#overlay', { position: { x: 500, y: 500 } });
     await expect(page.locator('.entry')).toHaveCount(5);
@@ -187,10 +187,10 @@ test.describe.serial('parcours d’édition', () => {
     await expect(page.locator('.entry')).toHaveCount(4);
   });
 
-  test('double-clic dans la liste : aller à l’entrée et l’éditer', async () => {
-    // La séquence réelle d'un utilisateur : un clic qui sélectionne, une
-    // pause, puis un double-clic — le nœud de la ligne doit survivre à la
-    // sélection, sinon le double-clic se perd.
+  test('double-click in the list: jump to the entry and edit it', async () => {
+    // A user's real sequence: one click that selects, a pause, then a
+    // double-click — the row's node must survive the selection, otherwise
+    // the double-click is lost.
     const row = page.locator('.entry', { hasText: 'DURAND' });
     await row.click();
     await expect(row).toHaveClass(/is-selected/);
@@ -203,7 +203,7 @@ test.describe.serial('parcours d’édition', () => {
     await expect(page.locator('#popover')).toBeHidden();
   });
 
-  test('le .toml exporté est fidèle', async () => {
+  test('the exported .toml is faithful', async () => {
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.click('#export-toml'),
@@ -219,13 +219,13 @@ test.describe.serial('parcours d’édition', () => {
       { page: 1, x: 100, y: 166.7, size: 13, font: 'tibo', text: 'DURAND', note: 'Nom' },
       { page: 1, x: 320, y: 176.7, text: 'Marie' },
     ]);
-    // La coche ✓ est un glyphe ZapfDingbats : mark « 3 » peint par « zadb ».
+    // The ✓ check is a ZapfDingbats glyph: mark "3" painted by "zadb".
     expect(form.check).toEqual([{ page: 1, x: 200, y: 266.7, mark: '3', font: 'zadb' }]);
-    // Redimensionnée de +30/+30 px à 150 % : +20/+20 pt sur le coin bas droit.
+    // Resized by +30/+30 px at 150%: +20/+20 pt on the bottom-right corner.
     expect(form.image).toEqual([{ page: 1, rect: [400, 200, 550, 350], file: 'signature.png' }]);
   });
 
-  test('le PDF généré contient ce qui a été posé', async () => {
+  test('the generated PDF contains what was placed', async () => {
     await page.click('#generate');
     await expect(page.locator('#done')).toBeVisible();
     await expect(page.locator('#done-summary')).toHaveText('2 textes · 1 coche · 1 image, sur 4 pages');
@@ -243,26 +243,26 @@ test.describe.serial('parcours d’édition', () => {
     await expect(page.locator('#done')).toBeHidden();
   });
 
-  test('aucune erreur console sur tout le parcours', async () => {
+  test('no console errors across the whole journey', async () => {
     expect(errors).toEqual([]);
   });
 });
 
-test.describe.serial('reprise d’une description', () => {
-  test('PDF + .toml rechargés ensemble, image manquante à joindre', async ({ page }) => {
+test.describe.serial('resuming a description', () => {
+  test('PDF + .toml reloaded together, missing image to attach', async ({ page }) => {
     await page.goto('/');
     await page.setInputFiles('#file-input', [pdfPath, `${ARTIFACTS}formulaire.toml`]);
     await expect(page.locator('#editor')).toBeVisible();
     await expect(page.locator('.entry')).toHaveCount(4);
 
-    // L'image n'a pas été re-fournie : l'entrée le signale, générer refuse.
+    // The image was not provided again: the entry says so, generating refuses.
     await expect(page.locator('.entry-missing')).toHaveText(/image manquante/);
     const message = page.waitForEvent('dialog')
       .then(async (d) => { const m = d.message(); await d.dismiss(); return m; });
     await page.click('#generate');
     expect(await message).toContain('manquante');
 
-    // La joindre depuis le panneau, puis générer pour de bon.
+    // Attach it from the panel, then generate for real.
     const chooser = page.waitForEvent('filechooser');
     await page.locator('.entry', { hasText: 'image manquante' }).click();
     await (await chooser).setFiles(pngPath);
@@ -273,8 +273,8 @@ test.describe.serial('reprise d’une description', () => {
     await expect(page.locator('#done-summary')).toHaveText('2 textes · 1 coche · 1 image, sur 4 pages');
     await page.click('#done-close');
 
-    // Chaque valeur est revenue : le popover de DURAND montre sa taille et
-    // sa police propres, la ligne de Marie ses coordonnées déplacées.
+    // Every value came back: DURAND's popover shows its own size and font,
+    // Marie's row its moved coordinates.
     await page.locator('.entry', { hasText: 'DURAND' }).dblclick();
     await expect(page.locator('#popover-text')).toHaveValue('DURAND');
     await expect(page.locator('#popover-size')).toHaveValue('13');
@@ -283,8 +283,8 @@ test.describe.serial('reprise d’une description', () => {
     await expect(page.locator('.entry', { hasText: 'Marie' }).locator('.entry-coords'))
       .toHaveText('p1 · 320,176.7');
 
-    // L'épreuve complète : export -> rechargement -> ré-export doit rendre
-    // un .toml identique octet pour octet.
+    // The full proof: export -> reload -> re-export must yield a .toml
+    // identical byte for byte.
     const [again] = await Promise.all([
       page.waitForEvent('download'),
       page.click('#export-toml'),
@@ -295,9 +295,9 @@ test.describe.serial('reprise d’une description', () => {
   });
 });
 
-test.describe('internationalisation', () => {
+test.describe('internationalization', () => {
   for (const lang of ['fr', 'en', 'de', 'es', 'it']) {
-    test(`tout tient à l’écran en « ${lang} »`, async ({ browser }) => {
+    test(`everything fits on screen in "${lang}"`, async ({ browser }) => {
       const context = await browser.newContext({
         locale: lang, viewport: { width: 1440, height: 900 },
       });
@@ -314,7 +314,7 @@ test.describe('internationalisation', () => {
         return bar.scrollWidth <= bar.clientWidth + 1;
       })).toBe(true);
 
-      // Le pire cas du popover : le mode édition et ses trois boutons.
+      // The popover's worst case: edit mode and its three buttons.
       await page.click('#overlay', { position: { x: 200, y: 200 } });
       await page.fill('#popover-text', 'Test');
       await page.click('#popover-place');
@@ -327,7 +327,7 @@ test.describe('internationalisation', () => {
           .map((b) => Math.round(b.getBoundingClientRect().top));
         return pop.scrollWidth <= pop.clientWidth + 1
           && foot.getBoundingClientRect().right <= pop.getBoundingClientRect().right + 1
-          // Le pied tient sur UNE ligne : tous les boutons au même niveau.
+          // The footer holds ONE line: every button at the same level.
           && Math.max(...tops) - Math.min(...tops) <= 2;
       })).toBe(true);
       await context.close();

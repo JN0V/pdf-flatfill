@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
-// L'appli est constituée de fichiers statiques : un serveur HTTP minimal
-// suffit, et python3 est présent partout où ces tests tournent (CI, poste).
+// The app is static files: a minimal HTTP server is enough, and python3 is
+// available everywhere these tests run (CI, workstation).
 export default defineConfig({
   testDir: '.',
   timeout: 60_000,
@@ -9,7 +9,7 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:8124',
     viewport: { width: 1440, height: 900 },
-    locale: 'fr-FR', // les scénarios vérifient les libellés français
+    locale: 'fr-FR', // the scenarios assert the French labels
   },
   webServer: {
     command: 'python3 -m http.server 8124 -d ../../web --bind 127.0.0.1',
