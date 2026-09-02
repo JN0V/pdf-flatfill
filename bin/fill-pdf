@@ -118,7 +118,31 @@ def main():
     style = form.get("style", {})
     ink = tuple(style.get("ink", DEFAULT_INK))
     font = style.get("font", DEFAULT_FONT)
+    base_fontfile = style.get("fontfile")
     base_size = style.get("size", DEFAULT_SIZE)
+
+    # A custom font is a file next to the description, like an image. PyMuPDF
+    # wants an arbitrary alias for each embedded file; one alias per file.
+    font_aliases = {}
+
+    def font_args(entry, kind, index):
+        """fontname/fontfile keyword arguments for insert_text.
+
+        An entry with `fontfile` uses that file; an entry with only `font`
+        uses that base-14 name; an entry with neither inherits the style,
+        file included.
+        """
+        fontfile = entry.get("fontfile")
+        name = entry.get("font")
+        if fontfile is None and name is None:
+            fontfile, name = base_fontfile, font
+        if fontfile is None:
+            return {"fontname": name}
+        path = workdir / fontfile
+        if not path.is_file():
+            die(f"[[{kind}]] #{index}: font file not found: {path}")
+        alias = font_aliases.setdefault(str(path), f"F{len(font_aliases)}")
+        return {"fontname": alias, "fontfile": str(path)}
 
     texts = form.get("text", [])
     checks = form.get("check", [])
@@ -158,26 +182,28 @@ def main():
 
     for index, entry in enumerate(texts, 1):
         require(entry, ("x", "y", "text"), "text", index)
+        fargs = font_args(entry, "text", index)
         page = get_page(doc, entry, "text", index)
         if not args.dry_run:
             page.insert_text(
                 fitz.Point(entry["x"], entry["y"]),
                 str(entry["text"]),
                 fontsize=entry.get("size", base_size),
-                fontname=entry.get("font", font),
                 color=ink,
+                **fargs,
             )
 
     for index, entry in enumerate(checks, 1):
         require(entry, ("x", "y"), "check", index)
+        fargs = font_args(entry, "check", index)
         page = get_page(doc, entry, "check", index)
         if not args.dry_run:
             page.insert_text(
                 fitz.Point(entry["x"], entry["y"]),
                 entry.get("mark", "X"),
                 fontsize=entry.get("size", base_size),
-                fontname=entry.get("font", font),
                 color=ink,
+                **fargs,
             )
 
     for index, entry in enumerate(images, 1):

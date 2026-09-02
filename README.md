@@ -38,6 +38,16 @@ a plain X, real ✓ ✗ ● glyphs (ZapfDingbats, one of the standard PDF fonts)
 any character. Dropping the PDF together with its description puts everything
 back in place for another pass.
 
+Fonts go beyond the built-in ones — a signature wants a handwriting face. The
+font menu adds a Google Font by name (fetched as WOFF from Fontsource's npm
+mirror, nothing to install), a font file you provide (TTF, OTF, WOFF), or, on
+Chromium, any font installed on your system (Local Font Access, with your
+permission). Whatever the source, the font is **embedded** in the generated
+PDF, so the output is identical on machines that don't have it; the font file
+is offered next to the filled PDF and the `.toml`, travels with them, and is
+asked for again — like a missing image — when a description that uses it is
+reopened without it.
+
 The interface speaks the fifteen most spoken languages in the world — English,
 Chinese, Hindi, Spanish, French, Arabic (right-to-left), Bengali, Portuguese,
 Russian, Urdu (right-to-left), Indonesian, German, Japanese, Turkish,
@@ -191,6 +201,8 @@ output = "filled-form.pdf"
 ink  = [0.05, 0.15, 0.7]   # RGB from 0 to 1 — ink blue
 font = "helv"              # defaults, both overridable entry by entry
 size = 10                  # (font takes PyMuPDF base-14 names: helv, tiro, cour, tibo…)
+# font = "Homemade Apple"  # any font, from a file living next to this
+# fontfile = "homemade-apple.woff"  # description — TTF, OTF or WOFF
 
 [[text]]
 page = 1
@@ -199,6 +211,8 @@ y = 230
 size = 11
 text = "DOE"
 note = "Last name"         # ignored by the tool, there to re-read yourself
+# font = "Homemade Apple"           # a signature wants a handwriting font;
+# fontfile = "homemade-apple.woff"  # fontfile works per entry too
 
 [[check]]
 page = 1

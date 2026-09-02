@@ -74,6 +74,12 @@ const FONT_CSS = {
   tibi: ['"Times New Roman", Times, serif', 700, 'italic'],
 };
 
+// Custom fonts, beyond the base-14: family name -> {bytes|null, file}.
+// `bytes` null means the description references the font but its file has
+// not been provided yet (same situation as a missing image). `file` is the
+// name the font travels under, next to the PDF and the TOML.
+const customFonts = new Map();
+
 const state = {
   pdfBytes: null,      // Uint8Array of the source PDF
   pdfDoc: null,        // pdf.js document
@@ -104,20 +110,176 @@ const els = {
   popoverStyleRow: $('popover-style-row'), popoverDelete: $('popover-delete'),
   popoverPlace: $('popover-place'),
   popoverMarkRow: $('popover-mark-row'), popoverMark: $('popover-mark'),
+  fontInput: $('font-input'), styleFont: $('style-font'),
+  fontPicker: $('font-picker'), fontPickerFilter: $('font-picker-filter'),
+  fontPickerList: $('font-picker-list'), fontPickerCancel: $('font-picker-cancel'),
+  doneFonts: $('done-fonts'),
   done: $('done'), doneSummary: $('done-summary'),
   donePdf: $('done-pdf'), donePdfName: $('done-pdf-name'),
   doneToml: $('done-toml'), doneTomlName: $('done-toml-name'),
 };
+
+// ---------------------------------------------------------------- custom fonts
+
+function slugify(family) {
+  return family.toLowerCase().replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '');
+}
+
+// Registers a font for both sides at once: a FontFace so the overlay shows
+// the real glyphs, and bytes for pdf-lib to embed at generation time.
+async function registerFont(family, bytes, fileName) {
+  customFonts.set(family, { bytes, file: fileName });
+  if (bytes) {
+    try {
+      const face = new FontFace(family, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+      await face.load();
+      document.fonts.add(face);
+    } catch { /* the overlay falls back; the PDF still embeds the bytes */ }
+  }
+  refreshFontSelects();
+  if (state.pdfDoc) renderOverlay();
+  return family;
+}
+
+// Google Fonts by name, without installing anything: Fontsource mirrors
+// every family on npm as WOFF v1 files, which both pdf-lib's fontkit and
+// PyMuPDF read as-is — no conversion, no extra weight.
+async function addGoogleFont() {
+  const name = window.prompt(t('googlePrompt'));
+  if (!name) return null;
+  const family = name.trim();
+  const slug = slugify(family);
+  try {
+    const res = await fetch(`https://cdn.jsdelivr.net/npm/@fontsource/${slug}/files/${slug}-latin-400-normal.woff`);
+    if (!res.ok) throw new Error(String(res.status));
+    return await registerFont(family, new Uint8Array(await res.arrayBuffer()), `${slug}.woff`);
+  } catch {
+    alert(t('fontFailed', { name: family }));
+    return null;
+  }
+}
+
+let fontPickResolve = null;
+function pickFontFile() {
+  return new Promise((resolve) => {
+    fontPickResolve = resolve;
+    els.fontInput.click();
+  });
+}
+
+// A font file from anywhere — a .ttf downloaded from fonts.google.com, a
+// handwriting font bought online. If a description is waiting for this very
+// file, it slots in; otherwise it becomes a new family named after the file.
+async function attachFontFile(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  for (const [family, rec] of customFonts) {
+    if (!rec.bytes && rec.file === file.name) return registerFont(family, bytes, rec.file);
+  }
+  const family = file.name.replace(/\.(ttf|otf|woff)$/i, '');
+  return registerFont(family, bytes, file.name);
+}
+
+// System fonts through the Local Font Access API (Chromium; permission
+// prompted by the browser). The picked face's bytes are embedded like any
+// other custom font, so the output is identical on machines without it.
+async function addSystemFont() {
+  try {
+    const fonts = await window.queryLocalFonts();
+    const families = [...new Set(fonts.map((f) => f.family))].sort();
+    const family = await pickFamily(families);
+    if (!family) return null;
+    const face = fonts.find((f) => f.family === family && /^(regular|normal|book)$/i.test(f.style))
+      ?? fonts.find((f) => f.family === family);
+    const bytes = new Uint8Array(await (await face.blob()).arrayBuffer());
+    return await registerFont(family, bytes, `${slugify(family)}.ttf`);
+  } catch {
+    alert(t('fontFailed', { name: 'system' }));
+    return null;
+  }
+}
+
+function pickFamily(families) {
+  return new Promise((resolve) => {
+    const done = (value) => {
+      els.fontPicker.hidden = true;
+      els.fontPickerFilter.removeEventListener('input', renderList);
+      document.removeEventListener('keydown', onKey, true);
+      resolve(value);
+    };
+    const renderList = () => {
+      const query = els.fontPickerFilter.value.toLowerCase();
+      els.fontPickerList.textContent = '';
+      families.filter((f) => f.toLowerCase().includes(query)).slice(0, 200).forEach((f) => {
+        const li = document.createElement('li');
+        li.textContent = f;
+        li.style.fontFamily = `"${f}"`;
+        li.addEventListener('click', () => done(f));
+        els.fontPickerList.appendChild(li);
+      });
+    };
+    const onKey = (e) => { if (e.key === 'Escape') done(null); };
+    els.fontPickerFilter.value = '';
+    renderList();
+    els.fontPickerFilter.addEventListener('input', renderList);
+    document.addEventListener('keydown', onKey, true);
+    els.fontPickerCancel.onclick = () => done(null);
+    els.fontPicker.hidden = false;
+    els.fontPickerFilter.focus();
+  });
+}
+
+const BASE_STYLE_FONTS = [['helv', 'Helvetica'], ['tiro', 'Times'], ['cour', 'Courier']];
+const BASE_POPOVER_FONTS = [
+  ['helv', 'Helvetica'], ['hebo', 'Helvetica Bold'], ['heit', 'Helvetica Italic'],
+  ['tiro', 'Times'], ['tibo', 'Times Bold'], ['tiit', 'Times Italic'], ['cour', 'Courier'],
+];
+
+function buildFontSelect(select, base, withDefault) {
+  const previous = select.value;
+  select.textContent = '';
+  if (withDefault) select.add(new Option(t('fontDefault'), ''));
+  for (const [value, label] of base) select.add(new Option(label, value));
+  for (const family of customFonts.keys()) select.add(new Option(family, family));
+  const separator = new Option('────────', '~sep');
+  separator.disabled = true;
+  select.add(separator);
+  select.add(new Option(t('fontGoogle'), '+google'));
+  select.add(new Option(t('fontFile'), '+file'));
+  if (window.queryLocalFonts) select.add(new Option(t('fontSystem'), '+system'));
+  select.value = previous;
+  if (select.value !== previous) select.value = withDefault ? '' : DEFAULT_FONT;
+}
+
+function refreshFontSelects() {
+  buildFontSelect(els.styleFont, BASE_STYLE_FONTS, false);
+  buildFontSelect(els.popoverFont, BASE_POPOVER_FONTS, true);
+}
+
+// The "+ …" entries of a font select are actions, not values: run the flow,
+// then land on the new family (or back on the previous value).
+async function onFontAction(select, value, fallback, apply) {
+  select.value = fallback;
+  let family = null;
+  if (value === '+google') family = await addGoogleFont();
+  else if (value === '+file') family = await pickFontFile();
+  else if (value === '+system') family = await addSystemFont();
+  if (family) {
+    select.value = family;
+    apply(family);
+  }
+}
 
 // ---------------------------------------------------------------- loading
 
 async function handleFiles(files) {
   let pdf = null, toml = null;
   const images = [];
+  const fonts = [];
   for (const file of files) {
     const name = file.name.toLowerCase();
     if (name.endsWith('.pdf')) pdf = file;
     else if (name.endsWith('.toml')) toml = file;
+    else if (/\.(ttf|otf|woff)$/.test(name)) fonts.push(file);
     else if (file.type === 'image/png' || file.type === 'image/jpeg') images.push(file);
   }
 
@@ -136,10 +298,11 @@ async function handleFiles(files) {
       alert(t('badToml', { msg: err.message }));
     }
   }
+  for (const file of fonts) await attachFontFile(file);
   for (const file of images) await attachImageFile(file);
 
   if (!state.pdfDoc) {
-    if (toml || images.length) alert(t('needPdf'));
+    if (toml || images.length || fonts.length) alert(t('needPdf'));
     return;
   }
   els.home.hidden = true;
@@ -159,17 +322,32 @@ function loadDescription(text) {
   if (style.font) state.style.font = String(style.font);
   if (style.size) state.style.size = Number(style.size);
 
+  // A fontfile references a file next to the description; until that file
+  // is provided the family is registered without bytes (like a missing
+  // image) and the overlay falls back.
+  const placeholderFont = (name, file) => {
+    if (!file) return name;
+    const family = String(name ?? file.replace(/\.(ttf|otf|woff)$/i, ''));
+    if (!customFonts.get(family)?.bytes) customFonts.set(family, { bytes: null, file: String(file) });
+    return family;
+  };
+  if (style.fontfile) state.style.font = placeholderFont(style.font, style.fontfile);
+
   state.entries = [];
   for (const entry of form.text ?? []) {
     state.entries.push({
       kind: 'text', page: entry.page, x: entry.x, y: entry.y,
-      text: String(entry.text ?? ''), size: entry.size, font: entry.font, note: entry.note,
+      text: String(entry.text ?? ''), size: entry.size,
+      font: entry.fontfile ? placeholderFont(entry.font, entry.fontfile) : entry.font,
+      note: entry.note,
     });
   }
   for (const entry of form.check ?? []) {
     state.entries.push({
       kind: 'check', page: entry.page, x: entry.x, y: entry.y,
-      mark: entry.mark, size: entry.size, font: entry.font, note: entry.note,
+      mark: entry.mark, size: entry.size,
+      font: entry.fontfile ? placeholderFont(entry.font, entry.fontfile) : entry.font,
+      note: entry.note,
     });
   }
   for (const entry of form.image ?? []) {
@@ -178,6 +356,7 @@ function loadDescription(text) {
       file: entry.file, note: entry.note, image: null, // bytes to re-attach
     });
   }
+  refreshFontSelects();
   syncStyleInputs();
 }
 
@@ -282,7 +461,7 @@ function renderOverlay() {
       el.className = 'placed';
       el.textContent = entry.kind === 'check' ? markDisplay(entry) : entry.text;
       const size = entry.size ?? state.style.size;
-      const [family, weight, fontStyle] = FONT_CSS[entry.font ?? state.style.font] ?? FONT_CSS[DEFAULT_FONT];
+      const [family, weight, fontStyle] = fontStyleOf(entry.font ?? state.style.font);
       Object.assign(el.style, {
         left: `${entry.x * s}px`, top: `${entry.y * s}px`,
         fontSize: `${size * s}px`,
@@ -300,6 +479,12 @@ function renderOverlay() {
     });
     els.overlay.appendChild(el);
   });
+}
+
+function fontStyleOf(code) {
+  if (FONT_CSS[code]) return FONT_CSS[code];
+  if (customFonts.has(code)) return [`"${code}", Helvetica, sans-serif`, 400, 'normal'];
+  return FONT_CSS[DEFAULT_FONT];
 }
 
 function cssInk([r, g, b]) {
@@ -582,6 +767,7 @@ function fillPopover(cfg) {
   els.popoverFont.hidden = cfg.showFont === false;
   els.popoverFont.value = cfg.font;
   if (els.popoverFont.value !== cfg.font) els.popoverFont.value = '';
+  popoverFontPrev = els.popoverFont.value;
   els.popoverMarkRow.hidden = cfg.markPreset === undefined;
   if (cfg.markPreset !== undefined) els.popoverMark.value = cfg.markPreset;
   els.popoverDelete.hidden = !cfg.deletable;
@@ -728,9 +914,10 @@ function changeZoom(delta) {
 
 function syncStyleInputs() {
   $('style-ink').value = state.style.ink.join(',');
-  // The selector only offers the roman faces; an imported bold/italic
-  // variant is kept as-is in state and on export.
-  if (['helv', 'tiro', 'cour'].includes(state.style.font)) $('style-font').value = state.style.font;
+  // Custom families have their own option; an imported bold/italic base-14
+  // variant has none and is kept as-is in state and on export.
+  els.styleFont.value = state.style.font;
+  if (els.styleFont.value !== state.style.font) els.styleFont.value = DEFAULT_FONT;
   $('style-size').value = state.style.size;
 }
 
@@ -738,9 +925,27 @@ $('style-ink').addEventListener('change', (e) => {
   state.style.ink = e.target.value.split(',').map(Number);
   renderOverlay();
 });
-$('style-font').addEventListener('change', (e) => {
-  state.style.font = e.target.value;
+els.styleFont.addEventListener('change', (e) => {
+  const value = e.target.value;
+  if (value.startsWith('+')) {
+    onFontAction(e.target, value, state.style.font, (family) => {
+      state.style.font = family;
+      renderOverlay();
+    });
+    return;
+  }
+  state.style.font = value;
   renderOverlay();
+});
+
+let popoverFontPrev = '';
+els.popoverFont.addEventListener('change', (e) => {
+  const value = e.target.value;
+  if (value.startsWith('+')) {
+    onFontAction(e.target, value, popoverFontPrev, (family) => { popoverFontPrev = family; });
+    return;
+  }
+  popoverFontPrev = value;
 });
 $('style-size').addEventListener('change', (e) => {
   state.style.size = Number(e.target.value) || DEFAULT_SIZE;
@@ -775,6 +980,9 @@ function serializeToml() {
   // No fmt() here: ink keeps its precision (0.05 is not 0.1).
   out.push(`ink  = [${state.style.ink.map(String).join(', ')}]`);
   out.push(`font = ${tomlString(state.style.font)}`);
+  if (customFonts.has(state.style.font)) {
+    out.push(`fontfile = ${tomlString(customFonts.get(state.style.font).file)}`);
+  }
   out.push(`size = ${fmt(state.style.size)}`);
 
   // Grouped by kind, as parsing does: export -> import -> export yields
@@ -792,7 +1000,12 @@ function serializeToml() {
       out.push(`x = ${fmt(entry.x)}`);
       out.push(`y = ${fmt(entry.y)}`);
       if (entry.size !== undefined) out.push(`size = ${fmt(entry.size)}`);
-      if (entry.font !== undefined) out.push(`font = ${tomlString(entry.font)}`);
+      if (entry.font !== undefined) {
+        out.push(`font = ${tomlString(entry.font)}`);
+        if (customFonts.has(entry.font)) {
+          out.push(`fontfile = ${tomlString(customFonts.get(entry.font).file)}`);
+        }
+      }
       if (entry.kind === 'text') out.push(`text = ${tomlString(entry.text)}`);
       else if (entry.mark !== undefined) out.push(`mark = ${tomlString(entry.mark)}`);
     }
@@ -830,12 +1043,35 @@ $('generate').addEventListener('click', async () => {
     return;
   }
 
+  // Fonts used by the description: custom families must have their bytes.
+  const usedFonts = new Set(state.entries
+    .filter((e) => e.kind !== 'image')
+    .map((e) => e.font ?? state.style.font));
+  const lostFonts = [...usedFonts]
+    .filter((code) => customFonts.has(code) && !customFonts.get(code).bytes)
+    .map((code) => customFonts.get(code).file);
+  if (lostFonts.length) {
+    alert(t('missingFonts', { list: lostFonts.join(', ') }));
+    return;
+  }
+
   const { PDFDocument, rgb } = PDFLib;
   const doc = await PDFDocument.load(state.pdfBytes);
   const pages = doc.getPages();
   const ink = rgb(...state.style.ink);
   const fonts = new Map();
+  let fontkitReady = false;
   const getFont = async (code) => {
+    if (customFonts.get(code)?.bytes) {
+      if (!fonts.has(code)) {
+        if (!fontkitReady) {
+          doc.registerFontkit(fontkit);
+          fontkitReady = true;
+        }
+        fonts.set(code, await doc.embedFont(customFonts.get(code).bytes, { subset: true }));
+      }
+      return fonts.get(code);
+    }
     const name = FONT_MAP[code] ?? FONT_MAP[DEFAULT_FONT];
     if (!fonts.has(name)) fonts.set(name, await doc.embedFont(name));
     return fonts.get(name);
@@ -888,6 +1124,25 @@ $('generate').addEventListener('click', async () => {
   els.doneToml.download = `${stem()}.toml`;
   els.doneTomlName.textContent = `${stem()}.toml`;
 
+  // Custom font files travel with the description, like the .toml itself.
+  els.doneFonts.textContent = '';
+  for (const code of usedFonts) {
+    const rec = customFonts.get(code);
+    if (!rec?.bytes) continue;
+    const link = document.createElement('a');
+    link.className = 'download';
+    link.download = rec.file;
+    link.href = URL.createObjectURL(new Blob([rec.bytes], { type: 'font/woff' }));
+    const name = document.createElement('span');
+    name.className = 'download-name';
+    name.textContent = rec.file;
+    const sub = document.createElement('span');
+    sub.className = 'download-sub';
+    sub.textContent = t('doneFontSub');
+    link.append(name, sub);
+    els.doneFonts.appendChild(link);
+  }
+
   const counts = { text: 0, check: 0, image: 0 };
   for (const entry of state.entries) counts[entry.kind] += 1;
   els.doneSummary.textContent =
@@ -903,6 +1158,14 @@ els.done.addEventListener('click', (e) => { if (e.target === els.done) els.done.
 
 $('pick-files').addEventListener('click', () => els.fileInput.click());
 els.fileInput.addEventListener('change', (e) => handleFiles([...e.target.files]));
+els.fontInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  const family = file ? await attachFontFile(file) : null;
+  fontPickResolve?.(family);
+  fontPickResolve = null;
+});
+
 els.imageInput.addEventListener('change', async (e) => {
   const file = e.target.files[0];
   e.target.value = '';
@@ -930,6 +1193,7 @@ document.querySelectorAll('.lang-select').forEach((select) => {
   select.addEventListener('change', (e) => {
     setLang(e.target.value);
     closePopover();
+    refreshFontSelects();
     if (state.pdfDoc) {
       els.filePages.textContent = tn(state.pdfDoc.numPages, 'page');
       renderPanel();
@@ -938,3 +1202,4 @@ document.querySelectorAll('.lang-select').forEach((select) => {
 });
 
 applyStatic();
+refreshFontSelects();

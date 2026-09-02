@@ -38,6 +38,10 @@ jobs:
         run: |
           pip install pymupdf
           bin/fill-pdf tests/e2e/.artifacts/formulaire.toml --dry-run
+          # The custom-font description exists unless the suite ran offline.
+          if [ -f tests/e2e/.artifacts/formulaire-font.toml ]; then
+            bin/fill-pdf tests/e2e/.artifacts/formulaire-font.toml --dry-run
+          fi
 
       - name: Keep traces on failure
         if: failure()

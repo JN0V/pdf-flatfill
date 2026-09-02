@@ -498,6 +498,32 @@ button { font: inherit; cursor: pointer; }
 .download-name { font-size: 14px; font-weight: 600; }
 .download-sub { font-size: 11.5px; opacity: 0.75; }
 .download:not(.download-primary) .download-sub { color: var(--muted); opacity: 1; }
+.done-fonts { display: contents; }
+
+.dialog-picker { max-height: 80vh; }
+.dialog-picker input[type="text"] {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.picker-list {
+  flex-grow: 1;
+  min-height: 120px;
+  overflow-y: auto;
+  margin: 0; padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  text-align: left;
+}
+.picker-list li {
+  padding: 8px 12px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.picker-list li:hover { background: var(--accent-soft); }
+
 .dialog-hint {
   margin: 0;
   padding: 12px 14px;

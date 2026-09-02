@@ -3,7 +3,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { parse as parseToml } from 'smol-toml';
-import { makeFixtures, extractPageText, ARTIFACTS } from './fixtures.mjs';
+import { makeFixtures, fetchSignatureFont, extractPageText, ARTIFACTS } from './fixtures.mjs';
 
 let pdfPath, pngPath;
 
@@ -292,6 +292,75 @@ test.describe.serial('resuming a description', () => {
     await again.saveAs(`${ARTIFACTS}formulaire-2.toml`);
     expect(readFileSync(`${ARTIFACTS}formulaire-2.toml`, 'utf8'))
       .toBe(readFileSync(`${ARTIFACTS}formulaire.toml`, 'utf8'));
+  });
+});
+
+test.describe.serial('custom fonts (signatures)', () => {
+  let fontPath;
+
+  test.beforeAll(async () => {
+    fontPath = await fetchSignatureFont();
+  });
+
+  test('a Google Font adds by name and paints the signature', async ({ page }) => {
+    test.skip(!fontPath, 'offline: Fontsource unreachable');
+    await page.goto('/');
+    await page.setInputFiles('#file-input', pdfPath);
+    await expect(page.locator('#editor')).toBeVisible();
+
+    // The "+ Google Fonts…" action prompts for a family name.
+    page.once('dialog', (d) => d.accept('Homemade Apple'));
+    await page.click('#overlay', { position: { x: 150, y: 600 } });
+    await page.selectOption('#popover-font', '+google');
+    await expect(page.locator('#popover-font')).toHaveValue('Homemade Apple');
+    await page.fill('#popover-text', 'Sébastien');
+    await page.click('#popover-place');
+    await expect(page.locator('.placed')).toHaveCSS('font-family', /Homemade Apple/);
+
+    const [toml] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#export-toml'),
+    ]);
+    await toml.saveAs(`${ARTIFACTS}formulaire-font.toml`);
+    const form = parseToml(readFileSync(`${ARTIFACTS}formulaire-font.toml`, 'utf8'));
+    expect(form.text).toEqual([{
+      page: 1, x: 100, y: 400, text: 'Sébastien',
+      font: 'Homemade Apple', fontfile: 'homemade-apple.woff',
+    }]);
+
+    // The generated PDF embeds the font; the dialog offers the font file.
+    await page.click('#generate');
+    await expect(page.locator('#done')).toBeVisible();
+    await expect(page.locator('#done-fonts .download')).toHaveCount(1);
+    await expect(page.locator('#done-fonts .download-name')).toHaveText('homemade-apple.woff');
+    const [pdf] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#done-pdf'),
+    ]);
+    await pdf.saveAs(`${ARTIFACTS}formulaire-font-rempli.pdf`);
+    const text = await extractPageText(readFileSync(`${ARTIFACTS}formulaire-font-rempli.pdf`), 1);
+    expect(text).toContain('Sébastien');
+  });
+
+  test('resuming without the font file blocks generation until attached', async ({ page }) => {
+    test.skip(!fontPath, 'offline: Fontsource unreachable');
+    await page.goto('/');
+    await page.setInputFiles('#file-input', [pdfPath, `${ARTIFACTS}formulaire-font.toml`]);
+    await expect(page.locator('#editor')).toBeVisible();
+    // The overlay falls back but the entry is there.
+    await expect(page.locator('.placed')).toHaveText('Sébastien');
+
+    const message = page.waitForEvent('dialog')
+      .then(async (d) => { const m = d.message(); await d.dismiss(); return m; });
+    await page.click('#generate');
+    expect(await message).toContain('homemade-apple.woff');
+
+    // Attach the file through the font menu, then generate for real.
+    const chooser = page.waitForEvent('filechooser');
+    await page.selectOption('#style-font', '+file');
+    await (await chooser).setFiles(fontPath);
+    await page.click('#generate');
+    await expect(page.locator('#done')).toBeVisible();
   });
 });
 

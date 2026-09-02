@@ -1,6 +1,6 @@
 // Fixtures generated on the fly: the repository refuses *.pdf and *.toml on
 // principle (personal data), so nothing is stored in-tree.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { PDFDocument } from 'pdf-lib';
 
 export const ARTIFACTS = new URL('./.artifacts/', import.meta.url).pathname;
@@ -19,6 +19,24 @@ export async function makeFixtures() {
   writeFileSync(`${ARTIFACTS}formulaire.pdf`, pdfBytes);
   writeFileSync(`${ARTIFACTS}signature.png`, PNG_BYTES);
   return { pdfPath: `${ARTIFACTS}formulaire.pdf`, pngPath: `${ARTIFACTS}signature.png` };
+}
+
+// A real handwriting font for the signature scenario, fetched once from the
+// same Fontsource mirror the app uses. Returns null when offline: the tests
+// that need it skip rather than fail.
+export async function fetchSignatureFont() {
+  const path = `${ARTIFACTS}homemade-apple.woff`;
+  try {
+    if (!existsSync(path)) {
+      mkdirSync(ARTIFACTS, { recursive: true });
+      const res = await fetch('https://cdn.jsdelivr.net/npm/@fontsource/homemade-apple/files/homemade-apple-latin-400-normal.woff');
+      if (!res.ok) throw new Error(String(res.status));
+      writeFileSync(path, Buffer.from(await res.arrayBuffer()));
+    }
+    return path;
+  } catch {
+    return null;
+  }
 }
 
 // Text extraction from a generated PDF, to verify what actually got
