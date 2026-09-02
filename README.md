@@ -1,7 +1,9 @@
 # pdf-flatfill
 
 Fill in **non-interactive** PDF forms: lay text, check marks and images onto the
-page at coordinates described in a TOML file.
+page at coordinates described in a TOML file. Two front-ends share that format:
+a [web app](#the-web-app) that runs entirely in the browser — open, click,
+download — and a [CLI](#the-cli) for the terminal and scripts.
 
 ## The problem
 
@@ -21,7 +23,59 @@ It is deliberately not a PDF form filler. If your PDF has real AcroForm fields,
 use `pdftk`, `pypdf` or any other proper form library — they will do a better job
 than painting coordinates by hand.
 
-## Installation
+## The web app
+
+`web/` is a browser front-end over the same TOML format, made for the person who
+just wants the form filled: open the PDF, click where an answer goes, type it,
+download the filled PDF together with its `.toml` description. Everything runs
+client-side — pdf.js renders the page, pdf-lib paints the output — so no byte
+ever leaves the browser, which is the point for forms full of personal data.
+
+Entries stay editable after the fact: click one on the page (or double-click it
+in the side panel) to change its content, note, size or font; drag it to move
+it; resize an image by its corner handle. Check marks come in several styles —
+a plain X, real ✓ ✗ ● glyphs (ZapfDingbats, one of the standard PDF fonts), or
+any character. Dropping the PDF together with its description puts everything
+back in place for another pass.
+
+The interface speaks French, English, German, Spanish and Italian — detected
+from the browser, switchable in the app. Only the interface: the TOML format
+stays language-neutral.
+
+The TOML stays the storage format — this matters. A description remains
+diffable, reviewable and editable by hand, the CLI keeps working headless and in
+scripts, and the web app is only an authoring front-end over the same file.
+Anything that made it the sole way in would trade those properties away for
+nothing. The coordinate conventions (points, top-left origin, baseline `y`,
+1-indexed pages) are identical in both by construction.
+
+It is plain static files with pinned CDN dependencies, no build step. Serve it
+any way you like:
+
+```bash
+python3 -m http.server -d web       # http://localhost:8000
+```
+
+or through GitHub Pages: the provided workflow deploys `web/` on every push,
+once Pages is enabled in the repository settings (Settings → Pages → Source:
+GitHub Actions). It then serves at <https://jn0v.github.io/pdf-flatfill/>.
+
+### Tests
+
+`tests/e2e/` covers the whole journey in a real browser (Playwright): load,
+place, edit, move, resize, delete, navigate, zoom, export, generate, resume —
+including a byte-for-byte export → reload → export round trip, and one test per
+language checking that every screen still fits. The suite also feeds its
+exported TOML back to `fill-pdf --dry-run`, so the two front-ends cannot drift
+apart silently. CI runs all of it on every push; locally:
+
+```bash
+cd tests/e2e && npm install && npx playwright install chromium && npm test
+```
+
+## The CLI
+
+### Installation
 
 ```bash
 git clone https://github.com/JN0V/pdf-flatfill.git
@@ -76,7 +130,7 @@ alias. `fill-pdf` tries both names, in that order.
 regardless. That is deliberate: you must be able to proof-read a description on a
 machine where PyMuPDF is not installed.
 
-## Usage
+### Usage
 
 Copy the template next to the PDF you want to fill, edit it, then:
 
@@ -170,58 +224,12 @@ file = "signature.png"
   corner. A `y` that is too small therefore makes the text bite into the label
   above it.
 
-Finding coordinates is a matter of successive approximation: put down a value,
-`--dry-run` to check the shape, then generate and look. The `note = "..."`
-fields exist for exactly that — finding your way on the third pass.
-
-## Web app
-
-`web/` holds a browser front-end over the same TOML format: open a PDF, click
-to place text, check marks and images, download the filled PDF and its
-description. Everything runs client-side — pdf.js renders the page, pdf-lib
-paints the output — so no byte ever leaves the browser, which is the point for
-forms full of personal data.
-
-The interface speaks French, English, German, Spanish and Italian — detected
-from the browser, switchable in the app. Only the interface: the TOML format
-stays language-neutral.
-
-It is plain static files with pinned CDN dependencies, no build step. Serve it
-any way you like:
-
-```bash
-python3 -m http.server -d web       # http://localhost:8000
-```
-
-or through GitHub Pages: the provided workflow deploys `web/` on every push,
-once Pages is enabled in the repository settings (Settings → Pages → Source:
-GitHub Actions).
-
-The CLI stays the headless reference. A description written by one is read by
-the other; the coordinate conventions (points, top-left origin, baseline `y`,
-1-indexed pages) are identical by construction.
-
-`tests/e2e/` covers the whole journey in a real browser (Playwright): load,
-place text, check marks and images, delete, navigate, zoom, export, generate,
-resume from a description. The suite also feeds its exported TOML back to
-`fill-pdf --dry-run`, so the two front-ends cannot drift apart silently. CI
-runs all of it on every push; locally:
-
-```bash
-cd tests/e2e && npm install && npx playwright install chromium && npm test
-```
+Finding coordinates by hand is a matter of successive approximation: put down a
+value, `--dry-run` to check the shape, then generate and look. The `note = "..."`
+fields exist for exactly that — finding your way on the third pass. The web app
+removes that chore: you click on the page, it writes the numbers.
 
 ## Roadmap
-
-**A graphical coordinate picker.** Hand-writing `x` and `y` is the one genuinely
-tedious part of this tool, and successive approximation is a poor substitute for
-seeing the page. The web app above is the first cut of this: it renders the PDF,
-lets you click where a value goes, and writes the TOML for you.
-
-The TOML stays the storage format — this matters. A description remains
-diffable, reviewable and editable by hand, the CLI keeps working headless and in
-scripts, and the GUI is only an authoring front-end over the same file. Anything
-that made the GUI the sole way in would trade those properties away for nothing.
 
 **To consider: carry the description inside the filled PDF.** Embed the TOML in
 the output PDF so that re-editing needs only that one file: open the filled PDF,
