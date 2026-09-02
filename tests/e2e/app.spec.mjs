@@ -174,6 +174,13 @@ test.describe.serial('editing journey', () => {
       .toHaveText('p1 · 320,176.7');
     // The release click must not open the edit popover.
     await expect(page.locator('#popover')).toBeHidden();
+
+    // Keyboard nudging on the selection: arrow 1 pt, Shift 10, Ctrl 0.1.
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Shift+ArrowDown');
+    await page.keyboard.press('Control+ArrowLeft');
+    await expect(page.locator('.entry', { hasText: 'Marie' }).locator('.entry-coords'))
+      .toHaveText('p1 · 320.9,186.7');
   });
 
   test('an image resizes by its handle', async () => {
@@ -246,7 +253,7 @@ test.describe.serial('editing journey', () => {
     expect(form.style).toEqual({ ink: [0, 0, 0], font: 'helv', size: 12 });
     expect(form.text).toEqual([
       { page: 1, x: 100, y: 166.7, ink: [0.753, 0.224, 0.169], size: 13, font: 'tibo', text: 'DURAND', note: 'Nom' },
-      { page: 1, x: 320, y: 176.7, text: 'Marie' },
+      { page: 1, x: 320.9, y: 186.7, text: 'Marie' },
     ]);
     // The ✓ check is a ZapfDingbats glyph: mark "3" painted by "zadb".
     expect(form.check).toEqual([{ page: 1, x: 200, y: 266.7, mark: '3', font: 'zadb' }]);
@@ -284,8 +291,11 @@ test.describe.serial('resuming a description', () => {
     await expect(page.locator('#editor')).toBeVisible();
     await expect(page.locator('.entry')).toHaveCount(4);
 
-    // The image was not provided again: the entry says so, generating refuses.
+    // The image was not provided again: the entry says so (dashed on the
+    // page — the one case where a placed image keeps a border), and
+    // generating refuses.
     await expect(page.locator('.entry-missing')).toHaveText(/image manquante/);
+    await expect(page.locator('.placed-image')).toHaveClass(/is-missing/);
     const message = page.waitForEvent('dialog')
       .then(async (d) => { const m = d.message(); await d.dismiss(); return m; });
     await page.click('#generate');
@@ -311,7 +321,7 @@ test.describe.serial('resuming a description', () => {
     await expect(page.locator('#popover-ink')).toHaveValue('#c0392b');
     await page.keyboard.press('Escape');
     await expect(page.locator('.entry', { hasText: 'Marie' }).locator('.entry-coords'))
-      .toHaveText('p1 · 320,176.7');
+      .toHaveText('p1 · 320.9,186.7');
 
     // The full proof: export -> reload -> re-export must yield a .toml
     // identical byte for byte.
@@ -347,6 +357,15 @@ test.describe('layer order', () => {
       return children.findIndex((el) => el.classList.contains('placed'))
         > children.findIndex((el) => el.classList.contains('placed-image'));
     })).toBe(true);
+
+    // The arrow buttons restack one step at a time: NOM down, then back up.
+    const nomRow = page.locator('.entry', { hasText: 'NOM' });
+    await nomRow.hover(); // the buttons only show on row hover
+    await nomRow.locator('.entry-move').nth(1).click();
+    await expect(page.locator('.entry').first()).toContainText('signature.png');
+    await nomRow.hover();
+    await nomRow.locator('.entry-move').nth(0).click();
+    await expect(page.locator('.entry').first()).toContainText('NOM');
 
     // Drag the text row below the image row: the image now paints on top.
     await page.locator('.entry').first().dragTo(page.locator('.entry').nth(1));

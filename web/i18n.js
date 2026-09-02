@@ -28,6 +28,7 @@ const STORAGE_KEY = 'pdf-flatfill-lang';
 
 export const translations = {
   fr: {
+    layerUp: 'Monter d’un calque', layerDown: 'Descendre d’un calque',
     fontGoogle: '+ Google Fonts…',
     fontFile: '+ Fichier de police…',
     fontSystem: '+ Police du système…',
@@ -76,6 +77,7 @@ export const translations = {
     pageRange: 'Une entrée vise la page {page}, mais le PDF n’en a que {count}.',
   },
   en: {
+    layerUp: 'Raise one layer', layerDown: 'Lower one layer',
     fontGoogle: '+ Google Fonts…',
     fontFile: '+ Font file…',
     fontSystem: '+ System font…',
@@ -124,6 +126,7 @@ export const translations = {
     pageRange: 'An entry targets page {page}, but the PDF only has {count}.',
   },
   de: {
+    layerUp: 'Eine Ebene nach oben', layerDown: 'Eine Ebene nach unten',
     fontGoogle: '+ Google Fonts…',
     fontFile: '+ Schriftdatei…',
     fontSystem: '+ Systemschrift…',
@@ -172,6 +175,7 @@ export const translations = {
     pageRange: 'Ein Eintrag zielt auf Seite {page}, das PDF hat aber nur {count}.',
   },
   es: {
+    layerUp: 'Subir una capa', layerDown: 'Bajar una capa',
     fontGoogle: '+ Google Fonts…',
     fontFile: '+ Archivo de fuente…',
     fontSystem: '+ Fuente del sistema…',
@@ -220,6 +224,7 @@ export const translations = {
     pageRange: 'Una entrada apunta a la página {page}, pero el PDF solo tiene {count}.',
   },
   it: {
+    layerUp: 'Alza di un livello', layerDown: 'Abbassa di un livello',
     fontGoogle: '+ Google Fonts…',
     fontFile: '+ File di carattere…',
     fontSystem: '+ Carattere di sistema…',
@@ -268,6 +273,7 @@ export const translations = {
     pageRange: 'Una voce punta alla pagina {page}, ma il PDF ne ha solo {count}.',
   },
   pt: {
+    layerUp: 'Subir uma camada', layerDown: 'Descer uma camada',
     fontGoogle: '+ Google Fonts…',
     fontFile: '+ Arquivo de fonte…',
     fontSystem: '+ Fonte do sistema…',
@@ -316,6 +322,7 @@ export const translations = {
     pageRange: 'Uma entrada aponta para a página {page}, mas o PDF só tem {count}.',
   },
   ru: {
+    layerUp: 'На слой выше', layerDown: 'На слой ниже',
     fontGoogle: '+ Google Fonts…',
     fontFile: '+ Файл шрифта…',
     fontSystem: '+ Системный шрифт…',
@@ -371,6 +378,7 @@ export const translations = {
     pageRange: 'Запись указывает на страницу {page}, но в PDF их только {count}.',
   },
   zh: {
+    layerUp: '上移一层', layerDown: '下移一层',
     fontGoogle: '+ Google Fonts…',
     fontFile: '+ 字体文件…',
     fontSystem: '+ 系统字体…',
@@ -419,6 +427,7 @@ export const translations = {
     pageRange: '有条目指向第 {page} 页，但 PDF 只有 {count} 页。',
   },
   hi: {
+    layerUp: 'एक परत ऊपर', layerDown: 'एक परत नीचे',
     fontGoogle: '+ Google Fonts…',
     fontFile: '+ फ़ॉन्ट फ़ाइल…',
     fontSystem: '+ सिस्टम फ़ॉन्ट…',
@@ -467,6 +476,7 @@ export const translations = {
     pageRange: 'एक प्रविष्टि पृष्ठ {page} की ओर इशारा करती है, पर PDF में केवल {count} पृष्ठ हैं।',
   },
   ar: {
+    layerUp: 'رفع طبقة', layerDown: 'خفض طبقة',
     fontGoogle: '+ Google Fonts…',
     fontFile: '+ ملف خط…',
     fontSystem: '+ خط النظام…',
@@ -515,6 +525,7 @@ export const translations = {
     pageRange: 'إدخال يشير إلى الصفحة {page} لكن الملف يحوي {count} فقط.',
   },
   bn: {
+    layerUp: 'এক স্তর উপরে', layerDown: 'এক স্তর নিচে',
     fontGoogle: '+ Google Fonts…',
     fontFile: '+ ফন্ট ফাইল…',
     fontSystem: '+ সিস্টেম ফন্ট…',
@@ -563,6 +574,7 @@ export const translations = {
     pageRange: 'একটি এন্ট্রি পৃষ্ঠা {page} নির্দেশ করে, কিন্তু PDF-এ আছে মাত্র {count}টি।',
   },
   ur: {
+    layerUp: 'ایک تہ اوپر', layerDown: 'ایک تہ نیچے',
     fontGoogle: '+ Google Fonts…',
     fontFile: '+ فونٹ فائل…',
     fontSystem: '+ سسٹم فونٹ…',
@@ -611,6 +623,7 @@ export const translations = {
     pageRange: 'ایک اندراج صفحہ {page} کی طرف اشارہ کرتا ہے، مگر PDF میں صرف {count} صفحات ہیں۔',
   },
   id: {
+    layerUp: 'Naik satu lapisan', layerDown: 'Turun satu lapisan',
     fontGoogle: '+ Google Fonts…',
     fontFile: '+ Berkas fon…',
     fontSystem: '+ Fon sistem…',
@@ -659,6 +672,7 @@ export const translations = {
     pageRange: 'Ada entri menunjuk halaman {page}, tetapi PDF hanya punya {count}.',
   },
   ja: {
+    layerUp: '1つ上のレイヤーへ', layerDown: '1つ下のレイヤーへ',
     fontGoogle: '+ Google Fonts…',
     fontFile: '+ フォントファイル…',
     fontSystem: '+ システムフォント…',
@@ -707,6 +721,7 @@ export const translations = {
     pageRange: 'ページ {page} を指す項目がありますが、PDF は {count} ページしかありません。',
   },
   tr: {
+    layerUp: 'Bir katman yukarı', layerDown: 'Bir katman aşağı',
     fontGoogle: '+ Google Fonts…',
     fontFile: '+ Yazı tipi dosyası…',
     fontSystem: '+ Sistem yazı tipi…',
@@ -755,6 +770,7 @@ export const translations = {
     pageRange: 'Bir girdi {page}. sayfayı gösteriyor ama PDF’de yalnızca {count} sayfa var.',
   },
   vi: {
+    layerUp: 'Lên một lớp', layerDown: 'Xuống một lớp',
     fontGoogle: '+ Google Fonts…',
     fontFile: '+ Tệp phông…',
     fontSystem: '+ Phông hệ thống…',

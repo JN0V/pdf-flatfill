@@ -457,6 +457,8 @@ function renderOverlay() {
         img.src = entry.image.url;
         img.alt = entry.note ?? entry.file ?? 'image';
         el.appendChild(img);
+      } else {
+        el.classList.add('is-missing');
       }
       if (index === state.selected) {
         const handle = document.createElement('div');
@@ -667,17 +669,33 @@ function renderPanel() {
       ? `p${entry.page} · rect`
       : `p${entry.page} · ${fmt(entry.x)},${fmt(entry.y)}`;
 
+    const move = (delta, key, path) => {
+      const button = document.createElement('button');
+      button.className = 'entry-move';
+      button.type = 'button';
+      button.title = t(key);
+      button.setAttribute('aria-label', t(key));
+      button.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="${path}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        moveLayer(index, delta);
+      });
+      return button;
+    };
+    const up = move(1, 'layerUp', 'M6 14l6-6 6 6');
+    const down = move(-1, 'layerDown', 'M6 10l6 6 6-6');
+
     const del = document.createElement('button');
     del.className = 'entry-delete';
     del.type = 'button';
     del.textContent = '×';
-    del.title = 'Supprimer';
+    del.title = t('delete');
     del.addEventListener('click', (event) => {
       event.stopPropagation();
       removeEntry(index);
     });
 
-    li.append(icon, main, coords, del);
+    li.append(icon, main, coords, up, down, del);
     li.addEventListener('click', () => {
       if (entry.kind === 'image' && !entry.image) {
         state.attachTarget = index;
@@ -758,6 +776,19 @@ function normalizeZ() {
   state.entries.forEach((e, i) => {
     if (isCanonical) delete e.z; else e.z = i;
   });
+}
+
+// "Up" raises the entry one layer (painted later); the panel shows it one
+// row higher. Same move as a one-step drag.
+function moveLayer(index, delta) {
+  const target = index + delta;
+  if (target < 0 || target >= state.entries.length) return;
+  const [entry] = state.entries.splice(index, 1);
+  state.entries.splice(target, 0, entry);
+  state.selected = target;
+  normalizeZ();
+  renderPanel();
+  renderOverlay();
 }
 
 let dragRowFrom = null;
@@ -959,12 +990,48 @@ els.popoverDelete.addEventListener('click', () => {
 });
 els.popoverText.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitPopover(); });
 els.popoverNote.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitPopover(); });
+// Keyboard nudging, drawing-app style: arrows move the selected entry by
+// 1 pt, Shift+arrow by 10 pt, Ctrl/Cmd+arrow by 0.1 pt.
+const NUDGE = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+
+function nudgeSelected(dx, dy) {
+  const entry = state.entries[state.selected];
+  if (!entry || entry.page !== state.page) return;
+  if (entry.kind === 'image') {
+    entry.rect = [entry.rect[0] + dx, entry.rect[1] + dy,
+      entry.rect[2] + dx, entry.rect[3] + dy].map(round1);
+  } else {
+    entry.x = round1(entry.x + dx);
+    entry.y = round1(entry.y + dy);
+  }
+  renderOverlay();
+  updatePanelCoords(state.selected);
+}
+
+function updatePanelCoords(index) {
+  const entry = state.entries[index];
+  for (const li of els.entryList.children) {
+    if (Number(li.dataset.index) === index) {
+      li.querySelector('.entry-coords').textContent = entry.kind === 'image'
+        ? `p${entry.page} · rect`
+        : `p${entry.page} · ${fmt(entry.x)},${fmt(entry.y)}`;
+      return;
+    }
+  }
+}
+
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closePopover();
+  const editingField = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
   if ((e.key === 'Delete' || e.key === 'Backspace') && state.selected !== null
-      && els.popover.hidden
-      && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
+      && els.popover.hidden && !editingField) {
     removeEntry(state.selected);
+  }
+  if (NUDGE[e.key] && state.selected !== null && els.popover.hidden && !editingField) {
+    e.preventDefault();
+    const step = e.shiftKey ? 10 : (e.ctrlKey || e.metaKey) ? 0.1 : 1;
+    const [dx, dy] = NUDGE[e.key];
+    nudgeSelected(dx * step, dy * step);
   }
 });
 

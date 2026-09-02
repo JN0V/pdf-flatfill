@@ -255,9 +255,10 @@ button { font: inherit; cursor: pointer; }
 }
 .placed-image {
   position: absolute;
-  border: 1.5px dashed var(--accent);
+  /* No chrome on a placed image — like text. The border only appears when
+     selected, or dashed when the image file is missing. */
+  border: 1.5px solid transparent;
   border-radius: 2px;
-  background: rgba(29, 53, 196, 0.04);
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -268,7 +269,14 @@ button { font: inherit; cursor: pointer; }
   object-fit: contain;
   pointer-events: none;
 }
-.placed-image.is-selected { border-style: solid; }
+.placed-image.is-missing {
+  border: 1.5px dashed var(--accent);
+  background: rgba(29, 53, 196, 0.04);
+}
+.placed-image.is-selected {
+  border: 1.5px solid var(--accent);
+  background: rgba(29, 53, 196, 0.04);
+}
 .resize-handle {
   position: absolute;
   right: -6px; bottom: -6px;
@@ -367,6 +375,15 @@ button { font: inherit; cursor: pointer; }
 }
 .entry:hover .entry-delete { visibility: visible; }
 .entry-delete:hover { color: #C0392B; }
+.entry-move {
+  border: 0; background: none;
+  color: var(--faint);
+  padding: 2px 1px;
+  display: inline-flex; align-items: center;
+  visibility: hidden;
+}
+.entry:hover .entry-move { visibility: visible; }
+.entry-move:hover { color: var(--accent); }
 .entry-missing { color: #C0392B; }
 
 .style-box {
