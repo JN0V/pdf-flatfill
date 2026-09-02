@@ -234,8 +234,11 @@ button { font: inherit; cursor: pointer; }
   border-radius: 4px;
   padding: 1px 3px;
   margin: -1px -3px;
-  cursor: default;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
+.placed:active { cursor: grabbing; }
 .placed.is-selected {
   border-color: var(--accent);
   background: rgba(29, 53, 196, 0.04);
@@ -245,11 +248,27 @@ button { font: inherit; cursor: pointer; }
   border: 1.5px dashed var(--accent);
   border-radius: 2px;
   background: rgba(29, 53, 196, 0.04);
-  overflow: hidden;
-  cursor: default;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
-.placed-image img { width: 100%; height: 100%; object-fit: contain; }
+.placed-image:active { cursor: grabbing; }
+.placed-image img {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
 .placed-image.is-selected { border-style: solid; }
+.resize-handle {
+  position: absolute;
+  right: -6px; bottom: -6px;
+  width: 11px; height: 11px;
+  border-radius: 3px;
+  background: var(--surface);
+  border: 1.5px solid var(--accent);
+  cursor: nwse-resize;
+  touch-action: none;
+}
 
 .pager {
   /* Centrée sur la zone de visualisation (viewport moins le panneau de 320px). */
@@ -386,7 +405,20 @@ button { font: inherit; cursor: pointer; }
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(29, 53, 196, 0.12);
 }
-.popover-foot { display: flex; align-items: center; justify-content: space-between; }
+.popover-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.popover-row select {
+  flex-grow: 1;
+  font: inherit; font-size: 12.5px;
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  min-width: 0;
+}
+.popover-foot { display: flex; align-items: center; gap: 8px; }
+.popover-spacer { flex-grow: 1; }
+.btn-danger { color: #C0392B; border-color: var(--border); }
+.btn-danger:hover { background: #FBEEEC; border-color: #E5B7B0; }
 .popover-size {
   display: flex; align-items: center; gap: 6px;
   font-size: 12px; color: var(--muted);

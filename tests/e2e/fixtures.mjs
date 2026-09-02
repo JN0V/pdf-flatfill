@@ -25,7 +25,9 @@ export async function makeFixtures() {
 // été peint (pdf.js côté node, sans worker).
 export async function extractPageText(bytes, pageNumber) {
   const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const doc = await getDocument({ data: new Uint8Array(bytes) }).promise;
+  // verbosity 0 : seules les erreurs. L'extraction n'a pas besoin des
+  // polices de substitution, dont l'absence est signalée en avertissement.
+  const doc = await getDocument({ data: new Uint8Array(bytes), verbosity: 0 }).promise;
   const page = await doc.getPage(pageNumber);
   const content = await page.getTextContent();
   return content.items.map((item) => item.str).join(' ');

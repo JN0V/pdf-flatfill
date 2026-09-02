@@ -4,7 +4,8 @@
 //   - coordonnées en points PDF, origine en HAUT à gauche ;
 //   - `y` est la ligne de base du texte, pas son sommet ;
 //   - `page` est 1-indexée ;
-//   - [[image]] a un `rect` [x0, y0, x1, y1] et garde ses proportions par défaut.
+//   - [[image]] a un `rect` [x0, y0, x1, y1] et garde ses proportions par défaut ;
+//   - `size` et `font` sont des défauts de [style], surchargeables par entrée.
 // Tout est local : aucun octet ne quitte le navigateur.
 
 import * as pdfjsLib from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs';
@@ -16,13 +17,31 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 const DEFAULT_INK = [0.05, 0.15, 0.7];
 const DEFAULT_FONT = 'helv';
 const DEFAULT_SIZE = 10;
-const IMAGE_DEFAULT_WIDTH = 130; // pt — largeur posée au clic, ajustable dans le .toml
+const IMAGE_DEFAULT_WIDTH = 130; // pt — largeur posée au clic, ajustable ensuite
+const DRAG_THRESHOLD = 3;        // px avant qu'un clic devienne un glisser
 
-// Noms de police PyMuPDF -> polices standard pdf-lib.
+// Noms de police PyMuPDF -> polices standard pdf-lib (mêmes chaînes que
+// son enum StandardFonts, acceptées telles quelles par embedFont).
 const FONT_MAP = {
   helv: 'Helvetica', hebo: 'Helvetica-Bold', heit: 'Helvetica-Oblique', hebi: 'Helvetica-BoldOblique',
   cour: 'Courier', cobo: 'Courier-Bold', coit: 'Courier-Oblique', cobi: 'Courier-BoldOblique',
   tiro: 'Times-Roman', tibo: 'Times-Bold', tiit: 'Times-Italic', tibi: 'Times-BoldItalic',
+};
+
+// Rendu approchant de ces mêmes polices pour la surcouche d'édition.
+const FONT_CSS = {
+  helv: ['Helvetica, Arial, sans-serif', 400, 'normal'],
+  hebo: ['Helvetica, Arial, sans-serif', 700, 'normal'],
+  heit: ['Helvetica, Arial, sans-serif', 400, 'italic'],
+  hebi: ['Helvetica, Arial, sans-serif', 700, 'italic'],
+  cour: ['"Courier New", Courier, monospace', 400, 'normal'],
+  cobo: ['"Courier New", Courier, monospace', 700, 'normal'],
+  coit: ['"Courier New", Courier, monospace', 400, 'italic'],
+  cobi: ['"Courier New", Courier, monospace', 700, 'italic'],
+  tiro: ['"Times New Roman", Times, serif', 400, 'normal'],
+  tibo: ['"Times New Roman", Times, serif', 700, 'normal'],
+  tiit: ['"Times New Roman", Times, serif', 400, 'italic'],
+  tibi: ['"Times New Roman", Times, serif', 700, 'italic'],
 };
 
 const state = {
@@ -34,7 +53,7 @@ const state = {
   scale: 1,
   tool: 'text',
   style: { ink: [...DEFAULT_INK], font: DEFAULT_FONT, size: DEFAULT_SIZE },
-  entries: [],         // {kind, page, x, y, text?, mark?, size?, rect?, file?, note?, image?}
+  entries: [],         // {kind, page, x, y, text?, mark?, size?, font?, rect?, file?, note?, image?}
   selected: null,      // index dans entries
   pendingImage: null,  // {bytes, mime, width, height, url, name} en attente de clic
   attachTarget: null,  // index d'une entrée image dont le fichier manque
@@ -50,7 +69,10 @@ const els = {
   zoomLabel: $('zoom-label'),
   entryList: $('entry-list'), entryCount: $('entry-count'),
   popover: $('popover'), popoverTitle: $('popover-title'), popoverCoords: $('popover-coords'),
-  popoverText: $('popover-text'), popoverNote: $('popover-note'), popoverSize: $('popover-size'),
+  popoverText: $('popover-text'), popoverNote: $('popover-note'),
+  popoverSize: $('popover-size'), popoverFont: $('popover-font'),
+  popoverStyleRow: $('popover-style-row'), popoverDelete: $('popover-delete'),
+  popoverPlace: $('popover-place'),
   done: $('done'), doneSummary: $('done-summary'),
   donePdf: $('done-pdf'), donePdfName: $('done-pdf-name'),
   doneToml: $('done-toml'), doneTomlName: $('done-toml-name'),
@@ -110,13 +132,13 @@ function loadDescription(text) {
   for (const entry of form.text ?? []) {
     state.entries.push({
       kind: 'text', page: entry.page, x: entry.x, y: entry.y,
-      text: String(entry.text ?? ''), size: entry.size, note: entry.note,
+      text: String(entry.text ?? ''), size: entry.size, font: entry.font, note: entry.note,
     });
   }
   for (const entry of form.check ?? []) {
     state.entries.push({
       kind: 'check', page: entry.page, x: entry.x, y: entry.y,
-      mark: entry.mark, size: entry.size, note: entry.note,
+      mark: entry.mark, size: entry.size, font: entry.font, note: entry.note,
     });
   }
   for (const entry of form.image ?? []) {
@@ -191,7 +213,7 @@ async function render() {
   renderTask = null;
 
   els.pageCurrent.textContent = state.page;
-  els.zoomLabel.textContent = `${Math.round(state.scale * 100)} %`;
+  els.zoomLabel.textContent = `${Math.round(state.scale * 100)} %`;
   renderOverlay();
 }
 
@@ -215,21 +237,35 @@ function renderOverlay() {
         img.alt = entry.note ?? entry.file ?? 'image';
         el.appendChild(img);
       }
+      if (index === state.selected) {
+        const handle = document.createElement('div');
+        handle.className = 'resize-handle';
+        handle.addEventListener('pointerdown', (event) => {
+          event.stopPropagation();
+          startDrag(event, index, 'resize');
+        });
+        el.appendChild(handle);
+      }
     } else {
       el = document.createElement('div');
       el.className = 'placed';
       el.textContent = entry.kind === 'check' ? (entry.mark ?? 'X') : entry.text;
       const size = entry.size ?? state.style.size;
+      const [family, weight, fontStyle] = FONT_CSS[entry.font ?? state.style.font] ?? FONT_CSS[DEFAULT_FONT];
       Object.assign(el.style, {
         left: `${entry.x * s}px`, top: `${entry.y * s}px`,
         fontSize: `${size * s}px`,
+        fontFamily: family, fontWeight: weight, fontStyle,
         color: cssInk(state.style.ink),
       });
     }
     if (index === state.selected) el.classList.add('is-selected');
+    el.addEventListener('pointerdown', (event) => startDrag(event, index, 'move'));
     el.addEventListener('click', (event) => {
       event.stopPropagation();
+      if (suppressClick) { suppressClick = false; return; }
       select(index);
+      openEditPopover(index);
     });
     els.overlay.appendChild(el);
   });
@@ -249,6 +285,76 @@ function select(index) {
   }
   renderOverlay();
   renderPanel();
+}
+
+// ---------------------------------------------------------------- déplacement
+
+let dragging = null;      // {index, mode: 'move'|'resize', startX, startY, orig, moved}
+let suppressClick = false; // le clic qui suit un glisser ne doit ni éditer ni placer
+
+function startDrag(event, index, mode) {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  const entry = state.entries[index];
+  dragging = {
+    index, mode,
+    // L'élément traîné : mis à jour en place pendant le geste (pas de
+    // reconstruction, qui détruirait le nœud et perdrait le clic final).
+    el: mode === 'resize' ? event.currentTarget.parentElement : event.currentTarget,
+    startX: event.clientX, startY: event.clientY,
+    orig: entry.kind === 'image' ? { rect: [...entry.rect] } : { x: entry.x, y: entry.y },
+    moved: false,
+  };
+  window.addEventListener('pointermove', onDragMove);
+  window.addEventListener('pointerup', onDragEnd);
+}
+
+function onDragMove(event) {
+  const cdx = event.clientX - dragging.startX;
+  const cdy = event.clientY - dragging.startY;
+  if (!dragging.moved && Math.abs(cdx) < DRAG_THRESHOLD && Math.abs(cdy) < DRAG_THRESHOLD) return;
+  dragging.moved = true;
+
+  const s = state.scale;
+  const dx = cdx / s;
+  const dy = cdy / s;
+  const entry = state.entries[dragging.index];
+  const el = dragging.el;
+  if (entry.kind === 'image') {
+    const [x0, y0, x1, y1] = dragging.orig.rect;
+    if (dragging.mode === 'resize') {
+      entry.rect = [x0, y0, Math.max(x0 + 8, x1 + dx), Math.max(y0 + 8, y1 + dy)];
+      el.style.width = `${(entry.rect[2] - x0) * s}px`;
+      el.style.height = `${(entry.rect[3] - y0) * s}px`;
+    } else {
+      entry.rect = [x0 + dx, y0 + dy, x1 + dx, y1 + dy];
+      el.style.left = `${entry.rect[0] * s}px`;
+      el.style.top = `${entry.rect[1] * s}px`;
+    }
+  } else {
+    entry.x = dragging.orig.x + dx;
+    entry.y = dragging.orig.y + dy;
+    el.style.left = `${entry.x * s}px`;
+    el.style.top = `${entry.y * s}px`;
+  }
+}
+
+function onDragEnd() {
+  window.removeEventListener('pointermove', onDragMove);
+  window.removeEventListener('pointerup', onDragEnd);
+  if (dragging.moved) {
+    const entry = state.entries[dragging.index];
+    if (entry.kind === 'image') entry.rect = entry.rect.map(round1);
+    else { entry.x = round1(entry.x); entry.y = round1(entry.y); }
+    // Le clic de relâchement arrive juste après le pointerup ; s'il n'arrive
+    // pas (cible détruite entre-temps), le drapeau se désarme tout seul.
+    suppressClick = true;
+    setTimeout(() => { suppressClick = false; }, 0);
+    state.selected = dragging.index;
+    renderOverlay();
+    renderPanel();
+  }
+  dragging = null;
 }
 
 // ---------------------------------------------------------------- panneau
@@ -303,11 +409,7 @@ function renderPanel() {
     del.title = 'Supprimer';
     del.addEventListener('click', (event) => {
       event.stopPropagation();
-      state.entries.splice(index, 1);
-      if (state.selected === index) state.selected = null;
-      else if (state.selected > index) state.selected -= 1;
-      renderPanel();
-      renderOverlay();
+      removeEntry(index);
     });
 
     li.append(icon, main, coords, del);
@@ -323,11 +425,22 @@ function renderPanel() {
   });
 }
 
-// ---------------------------------------------------------------- placement
+function removeEntry(index) {
+  state.entries.splice(index, 1);
+  if (state.selected === index) state.selected = null;
+  else if (state.selected > index) state.selected -= 1;
+  renderPanel();
+  renderOverlay();
+}
 
-let pendingClick = null; // {x, y} en points, en attente du popover
+// ---------------------------------------------------------------- popover
+
+// popCtx : { mode: 'new-text', x, y } pour un placement,
+//          { mode: 'edit', index } pour une entrée existante.
+let popCtx = null;
 
 els.overlay.addEventListener('click', (event) => {
+  if (suppressClick) { suppressClick = false; return; }
   const rect = els.overlay.getBoundingClientRect();
   const x = (event.clientX - rect.left) / state.scale;
   const y = (event.clientY - rect.top) / state.scale;
@@ -342,7 +455,7 @@ els.overlay.addEventListener('click', (event) => {
 
   if (state.tool === 'image') {
     if (!state.pendingImage) {
-      pendingClick = { x, y };
+      popCtx = { mode: 'new-image', x, y };
       els.imageInput.click();
       return;
     }
@@ -350,8 +463,138 @@ els.overlay.addEventListener('click', (event) => {
     return;
   }
 
-  pendingClick = { x, y };
-  openPopover(event.clientX, event.clientY);
+  popCtx = { mode: 'new-text', x, y };
+  fillPopover({
+    title: 'Nouveau texte', coords: `p.${state.page} · x ${fmt(round1(x))} · y ${fmt(round1(y))}`,
+    text: '', textPlaceholder: 'Texte à poser', showText: true, showStyle: true,
+    note: '', size: state.style.size, font: '', deletable: false, action: 'Placer',
+  });
+  positionPopover(event.clientX + 12, event.clientY + 12);
+});
+
+function openEditPopover(index) {
+  const entry = state.entries[index];
+  // origFont : une police importée absente du sélecteur (ex. « hebi ») ne
+  // doit pas être perdue si l'utilisateur ne touche pas au champ.
+  popCtx = { mode: 'edit', index, origFont: entry.font };
+  const common = {
+    note: entry.note ?? '', deletable: true, action: 'Enregistrer',
+    size: entry.size ?? state.style.size, font: entry.font ?? '',
+  };
+  if (entry.kind === 'text') {
+    fillPopover({
+      ...common, title: 'Modifier le texte',
+      coords: `p.${entry.page} · x ${fmt(entry.x)} · y ${fmt(entry.y)}`,
+      text: entry.text, textPlaceholder: 'Texte à poser', showText: true, showStyle: true,
+    });
+  } else if (entry.kind === 'check') {
+    fillPopover({
+      ...common, title: 'Modifier la coche',
+      coords: `p.${entry.page} · x ${fmt(entry.x)} · y ${fmt(entry.y)}`,
+      text: entry.mark ?? '', textPlaceholder: 'Marque — « X » par défaut', showText: true, showStyle: true,
+    });
+  } else {
+    fillPopover({
+      ...common, title: 'Modifier l’image',
+      coords: `p.${entry.page} · rect`,
+      text: '', showText: false, showStyle: false,
+    });
+  }
+
+  const oRect = els.overlay.getBoundingClientRect();
+  const anchorX = entry.kind === 'image' ? entry.rect[2] : entry.x;
+  const anchorY = entry.kind === 'image' ? entry.rect[1] : entry.y;
+  positionPopover(oRect.left + anchorX * state.scale + 14, oRect.top + anchorY * state.scale);
+}
+
+function fillPopover(cfg) {
+  els.popoverTitle.textContent = cfg.title;
+  els.popoverCoords.textContent = cfg.coords;
+  els.popoverText.hidden = !cfg.showText;
+  els.popoverText.value = cfg.text;
+  els.popoverText.placeholder = cfg.textPlaceholder ?? '';
+  els.popoverNote.value = cfg.note;
+  els.popoverStyleRow.hidden = !cfg.showStyle;
+  els.popoverSize.value = cfg.size;
+  els.popoverFont.value = cfg.font;
+  if (els.popoverFont.value !== cfg.font) els.popoverFont.value = '';
+  els.popoverDelete.hidden = !cfg.deletable;
+  els.popoverPlace.textContent = cfg.action;
+}
+
+function positionPopover(clientX, clientY) {
+  els.popover.hidden = false;
+  const { offsetWidth: w, offsetHeight: h } = els.popover;
+  els.popover.style.left = `${Math.max(12, Math.min(clientX, window.innerWidth - w - 12))}px`;
+  els.popover.style.top = `${Math.max(12, Math.min(clientY, window.innerHeight - h - 12))}px`;
+  (els.popoverText.hidden ? els.popoverNote : els.popoverText).focus();
+}
+
+function closePopover() {
+  els.popover.hidden = true;
+  popCtx = null;
+}
+
+function submitPopover() {
+  if (!popCtx) return;
+  const value = els.popoverText.value;
+  const note = els.popoverNote.value.trim();
+  const size = Number(els.popoverSize.value) || state.style.size;
+  let font = els.popoverFont.value;
+  const listed = [...els.popoverFont.options].some((o) => o.value === popCtx.origFont);
+  if (!font && popCtx.origFont && !listed) font = popCtx.origFont;
+
+  if (popCtx.mode === 'new-text') {
+    if (!value) return;
+    const entry = { kind: 'text', page: state.page, x: round1(popCtx.x), y: round1(popCtx.y), text: value };
+    applyStyleFields(entry, { note, size, font });
+    state.entries.push(entry);
+    state.selected = state.entries.length - 1;
+  } else if (popCtx.mode === 'edit') {
+    const entry = state.entries[popCtx.index];
+    if (entry.kind === 'text') {
+      if (!value) return;
+      entry.text = value;
+      applyStyleFields(entry, { note, size, font });
+    } else if (entry.kind === 'check') {
+      const mark = value.trim();
+      if (mark && mark !== 'X') entry.mark = mark; else delete entry.mark;
+      applyStyleFields(entry, { note, size, font });
+    } else {
+      if (note) entry.note = note; else delete entry.note;
+    }
+    state.selected = popCtx.index;
+  }
+  closePopover();
+  renderOverlay();
+  renderPanel();
+}
+
+// Les champs égaux au style par défaut ne sont pas répétés dans le TOML.
+function applyStyleFields(entry, { note, size, font }) {
+  if (note) entry.note = note; else delete entry.note;
+  if (size !== state.style.size) entry.size = size; else delete entry.size;
+  if (font && font !== state.style.font) entry.font = font; else delete entry.font;
+}
+
+els.popoverPlace.addEventListener('click', submitPopover);
+$('popover-cancel').addEventListener('click', closePopover);
+els.popoverDelete.addEventListener('click', () => {
+  if (popCtx?.mode === 'edit') {
+    const { index } = popCtx;
+    closePopover();
+    removeEntry(index);
+  }
+});
+els.popoverText.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitPopover(); });
+els.popoverNote.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitPopover(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closePopover();
+  if ((e.key === 'Delete' || e.key === 'Backspace') && state.selected !== null
+      && els.popover.hidden
+      && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
+    removeEntry(state.selected);
+  }
 });
 
 function placeImage(x, y) {
@@ -368,59 +611,6 @@ function placeImage(x, y) {
   renderOverlay();
   renderPanel();
 }
-
-function openPopover(clientX, clientY) {
-  els.popoverCoords.textContent = `p.${state.page} · x ${fmt(pendingClick.x)} · y ${fmt(pendingClick.y)}`;
-  els.popoverText.value = '';
-  els.popoverNote.value = '';
-  els.popoverSize.value = state.style.size;
-  els.popover.hidden = false;
-  const { offsetWidth: w, offsetHeight: h } = els.popover;
-  const left = Math.min(clientX + 12, window.innerWidth - w - 12);
-  const top = Math.min(clientY + 12, window.innerHeight - h - 12);
-  els.popover.style.left = `${Math.max(12, left)}px`;
-  els.popover.style.top = `${Math.max(12, top)}px`;
-  els.popoverText.focus();
-}
-
-function closePopover() {
-  els.popover.hidden = true;
-  pendingClick = null;
-}
-
-function placeText() {
-  const text = els.popoverText.value;
-  if (!text || !pendingClick) return;
-  const size = Number(els.popoverSize.value) || state.style.size;
-  const entry = {
-    kind: 'text', page: state.page,
-    x: round1(pendingClick.x), y: round1(pendingClick.y),
-    text,
-  };
-  if (size !== state.style.size) entry.size = size;
-  const note = els.popoverNote.value.trim();
-  if (note) entry.note = note;
-  state.entries.push(entry);
-  state.selected = state.entries.length - 1;
-  closePopover();
-  renderOverlay();
-  renderPanel();
-}
-
-$('popover-place').addEventListener('click', placeText);
-$('popover-cancel').addEventListener('click', closePopover);
-els.popoverText.addEventListener('keydown', (e) => { if (e.key === 'Enter') placeText(); });
-els.popoverNote.addEventListener('keydown', (e) => { if (e.key === 'Enter') placeText(); });
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closePopover();
-  if ((e.key === 'Delete' || e.key === 'Backspace') && state.selected !== null
-      && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
-    state.entries.splice(state.selected, 1);
-    state.selected = null;
-    renderOverlay();
-    renderPanel();
-  }
-});
 
 // ---------------------------------------------------------------- barre d'outils
 
@@ -453,10 +643,9 @@ function changeZoom(delta) {
 
 function syncStyleInputs() {
   $('style-ink').value = state.style.ink.join(',');
-  const font = FONT_MAP[state.style.font] ? state.style.font : DEFAULT_FONT;
   // Le sélecteur ne propose que les romains ; une variante grasse/italique
   // importée est conservée telle quelle dans l'état et à l'export.
-  if (['helv', 'tiro', 'cour'].includes(font)) $('style-font').value = font;
+  if (['helv', 'tiro', 'cour'].includes(state.style.font)) $('style-font').value = state.style.font;
   $('style-size').value = state.style.size;
 }
 
@@ -464,7 +653,10 @@ $('style-ink').addEventListener('change', (e) => {
   state.style.ink = e.target.value.split(',').map(Number);
   renderOverlay();
 });
-$('style-font').addEventListener('change', (e) => { state.style.font = e.target.value; });
+$('style-font').addEventListener('change', (e) => {
+  state.style.font = e.target.value;
+  renderOverlay();
+});
 $('style-size').addEventListener('change', (e) => {
   state.style.size = Number(e.target.value) || DEFAULT_SIZE;
   renderOverlay();
@@ -475,10 +667,18 @@ $('style-size').addEventListener('change', (e) => {
 function round1(v) { return Math.round(v * 10) / 10; }
 function fmt(v) { return Number.isInteger(v) ? String(v) : v.toFixed(1); }
 
+// Caractères de contrôle interdits en clair dans une chaîne TOML basique
+// (tout C0 sauf \n et \t, plus DEL), construits sans littéraux de contrôle.
+const CONTROL_RE = new RegExp(
+  '[' + [...Array(32).keys()].filter((i) => i !== 9 && i !== 10).concat(127)
+    .map((i) => '\\u' + i.toString(16).padStart(4, '0')).join('') + ']',
+  'g',
+);
+
 function tomlString(value) {
   return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
     .replace(/\n/g, '\\n').replace(/\t/g, '\\t')
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)}"`;
+    .replace(CONTROL_RE, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'))}"`;
 }
 
 function serializeToml() {
@@ -503,6 +703,7 @@ function serializeToml() {
       out.push(`x = ${fmt(entry.x)}`);
       out.push(`y = ${fmt(entry.y)}`);
       if (entry.size !== undefined) out.push(`size = ${fmt(entry.size)}`);
+      if (entry.font !== undefined) out.push(`font = ${tomlString(entry.font)}`);
       if (entry.kind === 'text') out.push(`text = ${tomlString(entry.text)}`);
       else if (entry.mark !== undefined) out.push(`mark = ${tomlString(entry.mark)}`);
     }
@@ -544,10 +745,13 @@ $('generate').addEventListener('click', async () => {
   const { PDFDocument, rgb } = PDFLib;
   const doc = await PDFDocument.load(state.pdfBytes);
   const pages = doc.getPages();
-  // Les valeurs de FONT_MAP sont les noms des 14 polices standard, que
-  // pdf-lib accepte tels quels (mêmes chaînes que son enum StandardFonts).
-  const font = await doc.embedFont(FONT_MAP[state.style.font] ?? FONT_MAP[DEFAULT_FONT]);
   const ink = rgb(...state.style.ink);
+  const fonts = new Map();
+  const getFont = async (code) => {
+    const name = FONT_MAP[code] ?? FONT_MAP[DEFAULT_FONT];
+    if (!fonts.has(name)) fonts.set(name, await doc.embedFont(name));
+    return fonts.get(name);
+  };
 
   for (const entry of state.entries) {
     const page = pages[entry.page - 1];
@@ -576,7 +780,7 @@ $('generate').addEventListener('click', async () => {
         x: entry.x,
         y: pageHeight - entry.y, // y TOML : ligne de base depuis le HAUT
         size: entry.size ?? state.style.size,
-        font,
+        font: await getFont(entry.font ?? state.style.font),
         color: ink,
       });
     }
@@ -613,11 +817,11 @@ els.fileInput.addEventListener('change', (e) => handleFiles([...e.target.files])
 els.imageInput.addEventListener('change', async (e) => {
   const file = e.target.files[0];
   e.target.value = '';
-  if (!file) { pendingClick = null; return; }
+  if (!file) { popCtx = null; return; }
   await attachImageFile(file);
-  if (state.pendingImage && pendingClick) {
-    placeImage(pendingClick.x, pendingClick.y);
-    pendingClick = null;
+  if (state.pendingImage && popCtx?.mode === 'new-image') {
+    placeImage(popCtx.x, popCtx.y);
+    popCtx = null;
   }
 });
 

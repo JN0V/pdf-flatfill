@@ -113,6 +113,71 @@ test.describe.serial('parcours d’édition', () => {
     await expect(page.locator('.entry')).toHaveCount(4);
   });
 
+  test('un texte existant s’édite : contenu, taille, police', async () => {
+    await page.locator('.placed', { hasText: 'DUPONT' }).click();
+    await expect(page.locator('#popover')).toBeVisible();
+    await expect(page.locator('#popover-title')).toHaveText('Modifier le texte');
+    await expect(page.locator('#popover-text')).toHaveValue('DUPONT');
+    await expect(page.locator('#popover-note')).toHaveValue('Nom');
+    await expect(page.locator('#popover-size')).toHaveValue('11');
+    await page.fill('#popover-text', 'DURAND');
+    await page.fill('#popover-size', '13');
+    await page.selectOption('#popover-font', 'tibo');
+    await page.click('#popover-place');
+    await expect(page.locator('#popover')).toBeHidden();
+    const edited = page.locator('.placed', { hasText: 'DURAND' });
+    await expect(edited).toBeVisible();
+    await expect(edited).toHaveCSS('font-weight', '700');
+    await expect(page.locator('.entry-text').first()).toHaveText('DURAND');
+  });
+
+  test('une entrée se déplace au glisser', async () => {
+    const marie = page.locator('.placed', { hasText: 'Marie' });
+    const box = await marie.boundingBox();
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx + 30, cy + 15, { steps: 4 });
+    await page.mouse.up();
+    // +30/+15 px à 150 % = +20/+10 pt.
+    await expect(page.locator('.entry', { hasText: 'Marie' }).locator('.entry-coords'))
+      .toHaveText('p1 · 320,176.7');
+    // Le clic de relâchement ne doit pas ouvrir le popover d'édition.
+    await expect(page.locator('#popover')).toBeHidden();
+  });
+
+  test('une image se redimensionne par sa poignée', async () => {
+    await page.locator('.placed-image').click(); // sélectionne et ouvre l'édition
+    await expect(page.locator('#popover-title')).toHaveText('Modifier l’image');
+    await page.keyboard.press('Escape'); // la sélection reste, la poignée aussi
+    const handle = page.locator('.resize-handle');
+    await expect(handle).toBeVisible();
+    const box = await handle.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 30, box.y + box.height / 2 + 30, { steps: 4 });
+    await page.mouse.up();
+    // Vérifié précisément sur le rect à l'export ; ici, la poignée a suivi.
+    await expect(page.locator('.resize-handle')).toBeVisible();
+  });
+
+  test('la coche s’édite, une entrée se supprime depuis le popover', async () => {
+    await page.locator('.placed', { hasText: 'X' }).click();
+    await expect(page.locator('#popover-title')).toHaveText('Modifier la coche');
+    await page.fill('#popover-text', 'V');
+    await page.click('#popover-place');
+    await expect(page.locator('.placed', { hasText: 'V' })).toBeVisible();
+
+    await page.click('.tool[data-tool="check"]');
+    await page.click('#overlay', { position: { x: 500, y: 500 } });
+    await expect(page.locator('.entry')).toHaveCount(5);
+    await page.locator('.placed', { hasText: 'X' }).click();
+    await expect(page.locator('#popover-title')).toHaveText('Modifier la coche');
+    await page.click('#popover-delete');
+    await expect(page.locator('.entry')).toHaveCount(4);
+  });
+
   test('le .toml exporté est fidèle', async () => {
     const [download] = await Promise.all([
       page.waitForEvent('download'),
@@ -126,11 +191,12 @@ test.describe.serial('parcours d’édition', () => {
     expect(form.output).toBe('formulaire-rempli.pdf');
     expect(form.style).toEqual({ ink: [0.05, 0.15, 0.7], font: 'helv', size: 12 });
     expect(form.text).toEqual([
-      { page: 1, x: 100, y: 166.7, size: 11, text: 'DUPONT', note: 'Nom' },
-      { page: 1, x: 300, y: 166.7, text: 'Marie' },
+      { page: 1, x: 100, y: 166.7, size: 13, font: 'tibo', text: 'DURAND', note: 'Nom' },
+      { page: 1, x: 320, y: 176.7, text: 'Marie' },
     ]);
-    expect(form.check).toEqual([{ page: 1, x: 200, y: 266.7 }]);
-    expect(form.image).toEqual([{ page: 1, rect: [400, 200, 530, 330], file: 'signature.png' }]);
+    expect(form.check).toEqual([{ page: 1, x: 200, y: 266.7, mark: 'V' }]);
+    // Redimensionnée de +30/+30 px à 150 % : +20/+20 pt sur le coin bas droit.
+    expect(form.image).toEqual([{ page: 1, rect: [400, 200, 550, 350], file: 'signature.png' }]);
   });
 
   test('le PDF généré contient ce qui a été posé', async () => {
@@ -144,9 +210,9 @@ test.describe.serial('parcours d’édition', () => {
     ]);
     await download.saveAs(`${ARTIFACTS}formulaire-rempli.pdf`);
     const text = await extractPageText(readFileSync(`${ARTIFACTS}formulaire-rempli.pdf`), 1);
-    expect(text).toContain('DUPONT');
+    expect(text).toContain('DURAND');
     expect(text).toContain('Marie');
-    expect(text).toContain('X');
+    expect(text).toContain('V');
 
     await page.click('#done-close');
     await expect(page.locator('#done')).toBeHidden();

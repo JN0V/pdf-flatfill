@@ -138,7 +138,7 @@
     </aside>
   </div>
 
-  <!-- Popover de placement -->
+  <!-- Popover de placement et d'édition -->
   <div id="popover" class="popover" hidden>
     <div class="popover-head">
       <span id="popover-title">Nouveau texte</span>
@@ -146,12 +146,24 @@
     </div>
     <input id="popover-text" type="text" placeholder="Texte à poser" autocomplete="off">
     <input id="popover-note" type="text" placeholder="Note — ex. « Prénom »" autocomplete="off">
-    <div class="popover-foot">
+    <div id="popover-style-row" class="popover-row">
       <label class="popover-size">Taille <input id="popover-size" type="number" min="4" max="72" step="1"></label>
-      <div>
-        <button id="popover-cancel" class="btn btn-ghost btn-sm" type="button">Annuler</button>
-        <button id="popover-place" class="btn btn-primary btn-sm" type="button">Placer</button>
-      </div>
+      <select id="popover-font" aria-label="Police">
+        <option value="">Police par défaut</option>
+        <option value="helv">Helvetica</option>
+        <option value="hebo">Helvetica gras</option>
+        <option value="heit">Helvetica italique</option>
+        <option value="tiro">Times</option>
+        <option value="tibo">Times gras</option>
+        <option value="tiit">Times italique</option>
+        <option value="cour">Courier</option>
+      </select>
+    </div>
+    <div class="popover-foot">
+      <button id="popover-delete" class="btn btn-danger btn-sm" type="button" hidden>Supprimer</button>
+      <span class="popover-spacer"></span>
+      <button id="popover-cancel" class="btn btn-ghost btn-sm" type="button">Annuler</button>
+      <button id="popover-place" class="btn btn-primary btn-sm" type="button">Placer</button>
     </div>
   </div>
 
