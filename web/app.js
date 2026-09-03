@@ -456,16 +456,22 @@ async function loadImage(file) {
   return { bytes, mime: file.type, width: img.naturalWidth, height: img.naturalHeight, url, name: file.name };
 }
 
-// A dropped/picked image joins the entry waiting for it by name, otherwise
-// it waits for a placement click.
+// A dropped/picked image joins EVERY entry waiting for it by name — a
+// signature placed at two spots references one file, one attachment.
+// With nothing waiting, it waits for a placement click.
 async function attachImageFile(file) {
   const image = await loadImage(file);
-  const waiting = state.entries.findIndex((e) => e.kind === 'image' && !e.image && e.file === file.name);
-  const target = state.attachTarget ?? (waiting >= 0 ? waiting : null);
-  state.attachTarget = null;
-  if (target !== null) {
-    state.entries[target].image = image;
-    state.entries[target].file = file.name;
+  const targets = state.entries.filter((e) => e.kind === 'image' && !e.image && e.file === file.name);
+  if (state.attachTarget !== null) {
+    const chosen = state.entries[state.attachTarget];
+    state.attachTarget = null;
+    if (!targets.includes(chosen)) targets.push(chosen);
+  }
+  if (targets.length) {
+    for (const entry of targets) {
+      entry.image = image;
+      entry.file = file.name;
+    }
     renderPanel();
     renderOverlay();
   } else {

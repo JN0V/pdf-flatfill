@@ -566,6 +566,39 @@ test.describe.serial('a self-contained filled PDF', () => {
       .toBe(readFileSync(`${ARTIFACTS}embedded-ref.toml`, 'utf8'));
   });
 
+  test('one image placed twice: one attachment, both placements restore', async ({ page }) => {
+    await page.goto('/');
+    await page.setInputFiles('#file-input', pdfPath);
+    await expect(page.locator('#editor')).toBeVisible();
+    await page.click('.tool[data-tool="image"]');
+    let chooser = page.waitForEvent('filechooser');
+    await page.click('#overlay', { position: { x: 200, y: 300 } });
+    await (await chooser).setFiles(pngPath);
+    chooser = page.waitForEvent('filechooser');
+    await page.click('#overlay', { position: { x: 550, y: 650 } });
+    await (await chooser).setFiles(pngPath);
+    await expect(page.locator('.placed-image')).toHaveCount(2);
+
+    await page.click('#generate');
+    await expect(page.locator('#done')).toBeVisible();
+    const [pdf] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#done-pdf'),
+    ]);
+    await pdf.saveAs(`${ARTIFACTS}twice.pdf`);
+    // The shared file is embedded once…
+    const attachments = await extractAttachments(readFileSync(`${ARTIFACTS}twice.pdf`));
+    expect(Object.keys(attachments).sort())
+      .toEqual(['formulaire.pdf', 'formulaire.toml', 'signature.png']);
+
+    // …and that one attachment serves both placements on reload.
+    await page.goto('/');
+    await page.setInputFiles('#file-input', `${ARTIFACTS}twice.pdf`);
+    await expect(page.locator('#editor')).toBeVisible();
+    await expect(page.locator('.placed-image')).toHaveCount(2);
+    await expect(page.locator('.entry-missing')).toHaveCount(0);
+  });
+
   test('unchecked in the dialog, the output regenerates clean', async ({ page }) => {
     await page.goto('/');
     await page.setInputFiles('#file-input', pdfPath);
