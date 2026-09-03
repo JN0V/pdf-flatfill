@@ -1095,6 +1095,35 @@ els.popoverNote.addEventListener('keydown', (e) => { if (e.key === 'Enter') subm
 // 1 pt, Shift+arrow by 10 pt, Ctrl/Cmd+arrow by 0.1 pt.
 const NUDGE = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
 
+// Copy / paste, same convention: Ctrl/Cmd+C takes the selection, each
+// Ctrl/Cmd+V drops a copy on the CURRENT page, shifted a bit further so
+// successive pastes don't pile up on one spot. An image copy shares its
+// file — a signature pasted around stays one file, one attachment.
+const clipboard = { entry: null, pastes: 0 };
+
+function cloneEntry(entry) {
+  const copy = { ...entry };
+  if (copy.rect) copy.rect = [...copy.rect];
+  if (copy.ink) copy.ink = [...copy.ink];
+  delete copy.z; // the paint order is recomputed on insertion
+  return copy;
+}
+
+function pasteClipboard() {
+  clipboard.pastes += 1;
+  const shift = 10 * clipboard.pastes;
+  const copy = cloneEntry(clipboard.entry);
+  copy.page = state.page;
+  if (copy.kind === 'image') copy.rect = copy.rect.map((v) => round1(v + shift));
+  else {
+    copy.x = round1(copy.x + shift);
+    copy.y = round1(copy.y + shift);
+  }
+  state.selected = insertEntry(copy);
+  renderOverlay();
+  renderPanel();
+}
+
 function nudgeSelected(dx, dy) {
   const entry = state.entries[state.selected];
   if (!entry || entry.page !== state.page) return;
@@ -1143,6 +1172,15 @@ document.addEventListener('keydown', (e) => {
     const step = e.shiftKey ? 10 : (e.ctrlKey || e.metaKey) ? 0.1 : 1;
     const [dx, dy] = NUDGE[e.key];
     nudgeSelected(dx * step, dy * step);
+  }
+  if ((e.ctrlKey || e.metaKey) && els.popover.hidden && !editingField) {
+    if (e.key === 'c' && state.selected !== null) {
+      clipboard.entry = cloneEntry(state.entries[state.selected]);
+      clipboard.pastes = 0;
+    } else if (e.key === 'v' && clipboard.entry) {
+      e.preventDefault();
+      pasteClipboard();
+    }
   }
 });
 
@@ -1407,6 +1445,7 @@ async function buildPdf(embed) {
   const doc = await PDFDocument.load(state.pdfBytes);
   const pages = doc.getPages();
   const fonts = new Map();
+  const images = new Map(); // one XObject per shared file, however many placements
   let fontkitReady = false;
   const getFont = async (code) => {
     if (customFonts.get(code)?.bytes) {
@@ -1433,9 +1472,12 @@ async function buildPdf(embed) {
     const pageHeight = page.getHeight();
     if (entry.kind === 'image') {
       const [x0, y0, x1, y1] = entry.rect;
-      const image = entry.image.mime === 'image/png'
-        ? await doc.embedPng(entry.image.bytes)
-        : await doc.embedJpg(entry.image.bytes);
+      if (!images.has(entry.image)) {
+        images.set(entry.image, entry.image.mime === 'image/png'
+          ? await doc.embedPng(entry.image.bytes)
+          : await doc.embedJpg(entry.image.bytes));
+      }
+      const image = images.get(entry.image);
       // keep_proportion (PyMuPDF default): the image is fitted inside the
       // rect without distortion, centred.
       const rectW = x1 - x0, rectH = y1 - y0;

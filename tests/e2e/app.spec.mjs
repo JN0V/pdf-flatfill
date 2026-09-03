@@ -625,6 +625,33 @@ test.describe.serial('a self-contained filled PDF', () => {
   });
 });
 
+test.describe('copy and paste', () => {
+  test('Ctrl+C / Ctrl+V duplicates the selection, shifted, on the current page', async ({ page }) => {
+    await page.goto('/');
+    await page.setInputFiles('#file-input', pdfPath);
+    await expect(page.locator('#editor')).toBeVisible();
+    await page.click('#overlay', { position: { x: 150, y: 250 } });
+    await page.fill('#popover-text', 'DOUBLE');
+    await page.click('#popover-place');
+    await page.locator('.placed', { hasText: 'DOUBLE' }).click();
+
+    await page.keyboard.press('Control+c');
+    await page.keyboard.press('Control+v');
+    await expect(page.locator('.placed')).toHaveCount(2);
+    // The copy lands 10 pt away, selected, on top of the stack.
+    await expect(page.locator('.entry').first().locator('.entry-coords'))
+      .toHaveText('p1 · 110,176.7');
+
+    // Pasting on another page drops the next copy there, shifted further.
+    await page.click('#page-next');
+    await page.keyboard.press('Control+v');
+    await expect(page.locator('.placed')).toHaveCount(1); // page 2 shows only the new copy
+    await expect(page.locator('.entry')).toHaveCount(3);
+    await expect(page.locator('.entry').first().locator('.entry-coords'))
+      .toHaveText('p2 · 120,186.7');
+  });
+});
+
 test.describe('small screens', () => {
   test('portrait phone: stacked layout, nothing overflows', async ({ browser }) => {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'fr' });
@@ -710,7 +737,7 @@ test.describe('internationalization', () => {
       await page.click('#help-open');
       await expect(page.locator('#help')).toBeVisible();
       await expect(page.locator('#help h2')).not.toBeEmpty();
-      await expect(page.locator('.help-row')).toHaveCount(5);
+      await expect(page.locator('.help-row')).toHaveCount(6);
       expect(await page.evaluate(() => {
         const dialog = document.querySelector('#help .dialog');
         return dialog.scrollWidth <= dialog.clientWidth + 1;

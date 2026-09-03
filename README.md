@@ -35,7 +35,8 @@ ever leaves the browser, which is the point for forms full of personal data.
 
 Entries stay editable after the fact: click one on the page (or double-click it
 in the side panel) to change its content, note, size or font; drag it to move
-it; resize an image by its corner handle. Check marks come in several styles —
+it; resize an image by its corner handle; copy and paste a selected entry with
+Ctrl+C / Ctrl+V — a signature pasted at two spots stays one file. Check marks come in several styles —
 a plain X, real ✓ ✗ ● glyphs (ZapfDingbats, one of the standard PDF fonts), or
 any character. Dropping the PDF together with its description puts everything
 back in place for another pass — and a description can also arrive late: the
@@ -300,9 +301,12 @@ Two decisions shape the feature:
 - **The description travels with the PDF — as an explicit choice.** Whoever
   receives the filled form also receives the TOML: mostly the same data that
   is painted on the page, but including notes and structure, plus the blank
-  source. The web app says so next to a checkbox in the download dialog (on
-  by default, toggling regenerates the file with its size in view); the CLI
-  only embeds when asked with `--embed`.
+  source. Images add less than it seems: a painted image is extractable from
+  any flattened PDF at full resolution anyway (`pdfimages` does it) — what
+  the attachment adds is the original file verbatim, metadata included. The
+  web app says so next to a checkbox in the download dialog (on by default,
+  toggling regenerates the file with its size in view); the CLI only embeds
+  when asked with `--embed`.
 
 This complements the TOML-next-to-the-PDF convention, it does not replace it:
 the standalone file remains the diffable, hand-editable reference.
