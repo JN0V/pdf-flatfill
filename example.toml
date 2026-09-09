@@ -21,8 +21,9 @@ size = 10                  # ink, font and size are all overridable entry by ent
 # font = "Homemade Apple"           # …or any font, from a file living next
 # fontfile = "homemade-apple.woff"  # to this description (TTF, OTF or WOFF)
 
-# Entries paint in layers: images at the bottom, then check marks, then text —
-# a signature scan's opaque background cannot eat the name written next to it.
+# Entries paint in layers: masks at the very bottom, then images, then check
+# marks, then text — a signature scan's opaque background cannot eat the name
+# written next to it, and a mask cannot eat what it was drawn to make room for.
 # An optional  z = <integer>  on any entry overrides that order: higher paints
 # later, i.e. on top. The web app writes it for you when you reorder its list.
 
@@ -73,3 +74,22 @@ file = "signature.png"
 note = "Signature"
 # keep_proportion = true
 # z = 9             # force this image ABOVE the text layers
+
+# --- Masks ------------------------------------------------------------------
+# An opaque rectangle, painted under everything, to cover a value the blank
+# form arrives with already filled in — and wrong. Write the correct one on
+# top with a [[text]].
+#
+# `color` is the background the mask impersonates, and white is only the most
+# common case: forms come on tinted paper, in shaded cells, over ruled tables.
+# The web app samples it from the page for you; by hand, read it off the PDF.
+#
+# It COVERS, it does not delete: the original text stays inside the PDF and
+# pdftotext still finds it. This corrects a wrong value; it does not redact a
+# secret one.
+
+# [[mask]]
+# page = 1
+# rect = [75, 218, 240, 236]   # x0, y0, x1, y1 — top left, bottom right
+# color = [1, 1, 1]            # RGB from 0 to 1, defaults to white
+# note = "Wrong last name, prefilled"

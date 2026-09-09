@@ -3,7 +3,8 @@
 # pdf-flatfill
 
 Fill in **non-interactive** PDF forms: lay text, check marks and images onto the
-page at coordinates described in a TOML file. Two front-ends share that format:
+page at coordinates described in a TOML file — and cover, where the form
+arrives prefilled with the wrong answer. Two front-ends share that format:
 a [web app](#the-web-app) that runs entirely in the browser — open, click,
 download — and a [CLI](#the-cli) for the terminal and scripts.
 
@@ -38,7 +39,10 @@ in the side panel) to change its content, note, size or font; drag it to move
 it; resize an image by its corner handle; copy and paste a selected entry with
 Ctrl+C / Ctrl+V — a signature pasted at two spots stays one file. Check marks come in several styles —
 a plain X, real ✓ ✗ ● glyphs (ZapfDingbats, one of the standard PDF fonts), or
-any character. Dropping the PDF together with its description puts everything
+any character. A fourth tool covers rather than adds: click a value the form
+arrived prefilled with, and it disappears under the colour of its own
+background — [see below](#covering-what-the-form-got-wrong), including what
+that does not do. Dropping the PDF together with its description puts everything
 back in place for another pass — and a description can also arrive late: the
 “Load a .toml” button (or a drop onto the editor) brings a `.toml`, an image
 or a font into the open session, asking before it replaces existing entries,
@@ -92,11 +96,11 @@ GitHub Actions). It then serves at <https://jn0v.github.io/pdf-flatfill/>.
 ### Tests
 
 `tests/e2e/` covers the whole journey in a real browser (Playwright): load,
-place, edit, move, resize, delete, navigate, zoom, export, generate, resume —
-including a byte-for-byte export → reload → export round trip, the
-self-contained cycle (generate with the description inside, restore everything
-from that one file), and one test per language checking that every screen
-still fits. The suite also feeds its
+place, edit, move, resize, delete, navigate, zoom, export, generate, resume,
+cover a prefilled value on a tinted background — including a byte-for-byte
+export → reload → export round trip, the self-contained cycle (generate with
+the description inside, restore everything from that one file), and one test
+per language checking that every screen still fits. The suite also feeds its
 exported TOML back to `fill-pdf --dry-run`, so the two front-ends cannot drift
 apart silently. CI runs all of it on every push; locally:
 
@@ -258,13 +262,51 @@ page = 4
 rect = [395, 395, 525, 435]
 file = "signature.png"
 # z = 9                    # stacking override: higher paints later (on top)
+
+[[mask]]
+page = 1
+rect = [75, 218, 240, 236]
+color = [1, 1, 1]          # the background it impersonates; white by default
+note = "Wrong last name, prefilled"
 ```
 
-Entries paint in layers: images at the bottom, then check marks, then text —
-so a signature scan with an opaque white background cannot eat the name
-written next to it. Within a layer, file order is paint order. The optional
-`z` overrides all of it when a description needs an unusual stacking; the web
-app writes it for you when you reorder the side panel by drag and drop.
+Entries paint in layers: masks at the very bottom, then images, then check
+marks, then text — so a signature scan with an opaque white background cannot
+eat the name written next to it, and a mask cannot eat what it was drawn to
+make room for. Within a layer, file order is paint order. The optional `z`
+overrides all of it when a description needs an unusual stacking; the web app
+writes it for you when you reorder the side panel by drag and drop.
+
+### Covering what the form got wrong
+
+Forms do not always arrive blank. A `[[mask]]` is an opaque rectangle painted
+under everything else, to cover a value that came prefilled and wrong; the
+right one goes on top as an ordinary `[[text]]`.
+
+The whole difficulty is `color`, because **the background is rarely white**:
+forms come on tinted paper, in shaded cells, over ruled tables. The web app
+settles it without asking — it reads the pixels the page is already rendered
+into and takes the dominant colour under the rectangle, which is the
+background by construction, since what is being covered is a minority of the
+pixels covering it. The resolved value is written into the description, so the
+CLI has nothing to sample: it applies. Where the guess is off — a gradient, a
+texture, a colour space the screen renders a shade beside — the eyedropper in
+the entry's editor takes the colour from wherever you point.
+
+In the app the gesture is one click: click a wrong value and it goes under the
+colour of its background, snapped to the text pdf.js reports there — including
+when the PDF drew that value in pieces, since runs that sit closer together
+than a space are taken as one. Drag instead to draw the area by hand: that is
+what a scan, a stamp, or a value set at an angle needs — rotated runs are
+deliberately not snapped to, because the box around them would be a lie.
+
+**A mask covers, it does not delete.** The text underneath stays in the PDF and
+`pdftotext` still finds it. That is harmless for a wrong date and it is not
+harmless for someone's ID number, so the app says so next to the download. The
+tool corrects a wrong value; it does not redact a secret one. Neither engine
+pretends otherwise: pdf-lib cannot rewrite a content stream at all, and making
+the CLI truly redact would mean the same description producing two different
+files depending on which front-end read it.
 
 ### Two pitfalls of the coordinate system
 

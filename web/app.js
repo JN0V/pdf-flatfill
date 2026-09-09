@@ -5,6 +5,7 @@
 //   - `y` is the text baseline, not its top;
 //   - `page` is 1-indexed;
 //   - [[image]] has a `rect` [x0, y0, x1, y1] and keeps proportions by default;
+//   - [[mask]] has the same `rect` and a `color`, and paints under everything;
 //   - `size` and `font` are [style] defaults, overridable per entry.
 // Everything is local: no byte ever leaves the browser.
 
@@ -20,6 +21,9 @@ const DEFAULT_FONT = 'helv';
 const DEFAULT_SIZE = 10;
 const IMAGE_DEFAULT_WIDTH = 130; // pt — width placed on click, adjustable afterwards
 const DRAG_THRESHOLD = 3;        // px before a click becomes a drag
+const MASK_DEFAULT_COLOR = [1, 1, 1];  // white, when nothing better is known
+const MASK_DEFAULT_BOX = [110, 15];    // pt — the box a click drops where no text was found
+const MASK_PADDING = 1;                // pt of margin around a detected text run
 
 // PyMuPDF font names -> pdf-lib standard fonts (the same strings as its
 // StandardFonts enum, accepted as-is by embedFont).
@@ -89,11 +93,16 @@ const state = {
   scale: 1,
   tool: 'text',
   style: { ink: [...DEFAULT_INK], font: DEFAULT_FONT, size: DEFAULT_SIZE },
-  entries: [],         // {kind, page, x, y, text?, mark?, size?, font?, rect?, file?, note?, image?}
+  entries: [],         // {kind, page, x, y, text?, mark?, size?, font?, rect?, color?, file?, note?, image?}
   selected: null,      // index into entries
   pendingImage: null,  // {bytes, mime, width, height, url, name} awaiting a placement click
   attachTarget: null,  // index of an image entry whose file is missing
+  picking: null,       // index of the mask whose colour the next click samples
 };
+
+// Two kinds live on a rectangle rather than on a point: they move, resize
+// and report their position the same way.
+const hasRect = (entry) => entry.kind === 'image' || entry.kind === 'mask';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -107,6 +116,7 @@ const els = {
   popover: $('popover'), popoverTitle: $('popover-title'), popoverCoords: $('popover-coords'),
   popoverText: $('popover-text'), popoverNote: $('popover-note'),
   popoverSize: $('popover-size'), popoverFont: $('popover-font'), popoverInk: $('popover-ink'),
+  popoverSizeLabel: $('popover-size-label'), popoverPick: $('popover-pick'),
   popoverStyleRow: $('popover-style-row'), popoverDelete: $('popover-delete'),
   popoverPlace: $('popover-place'),
   popoverMarkRow: $('popover-mark-row'), popoverMark: $('popover-mark'),
@@ -118,6 +128,7 @@ const els = {
   help: $('help'),
   embedDesc: $('embed-desc'),
   done: $('done'), doneSummary: $('done-summary'), doneHint: $('done-hint'),
+  doneMaskWarn: $('done-mask-warn'),
   donePdf: $('done-pdf'), donePdfName: $('done-pdf-name'), donePdfSize: $('done-pdf-size'),
   doneToml: $('done-toml'), doneTomlName: $('done-toml-name'),
 };
@@ -345,6 +356,16 @@ function validateDescription(form) {
     }
     if (typeof e.file !== 'string') fail('image', i + 1, "missing 'file'");
   });
+  (form.mask ?? []).forEach((e, i) => {
+    checkCommon(e, 'mask', i + 1, false);
+    if (!Array.isArray(e.rect) || e.rect.length !== 4 || !e.rect.every(isNum)) {
+      fail('mask', i + 1, "'rect' expects 4 numbers");
+    }
+    if (e.color !== undefined
+        && (!Array.isArray(e.color) || e.color.length !== 3 || !e.color.every(isNum))) {
+      fail('mask', i + 1, "'color' expects 3 numbers");
+    }
+  });
 }
 
 function loadDescription(text) {
@@ -368,6 +389,13 @@ function loadDescription(text) {
   if (style.fontfile) state.style.font = placeholderFont(style.font, style.fontfile);
 
   state.entries = [];
+  for (const entry of form.mask ?? []) {
+    state.entries.push({
+      kind: 'mask', page: entry.page, rect: entry.rect.map(Number), z: entry.z,
+      color: Array.isArray(entry.color) ? entry.color.map(Number) : [...MASK_DEFAULT_COLOR],
+      note: entry.note,
+    });
+  }
   for (const entry of form.text ?? []) {
     state.entries.push({
       kind: 'text', page: entry.page, x: entry.x, y: entry.y,
@@ -393,7 +421,7 @@ function loadDescription(text) {
     });
   }
   // Rebuild the paint order the description encodes: explicit z first,
-  // then the default layers (images, checks, texts), then file order.
+  // then the default layers (masks, images, checks, texts), then file order.
   state.entries = state.entries.map((e, i) => ({ e, i }))
     .sort((a, b) => (a.e.z ?? 0) - (b.e.z ?? 0)
       || KIND_RANK[a.e.kind] - KIND_RANK[b.e.kind] || a.i - b.i)
@@ -523,15 +551,20 @@ function renderOverlay() {
   state.entries.forEach((entry, index) => {
     if (entry.page !== state.page) return;
     let el;
-    if (entry.kind === 'image') {
+    if (hasRect(entry)) {
       el = document.createElement('div');
-      el.className = 'placed-image';
+      el.className = entry.kind === 'mask' ? 'placed-mask' : 'placed-image';
       const [x0, y0, x1, y1] = entry.rect;
       Object.assign(el.style, {
         left: `${x0 * s}px`, top: `${y0 * s}px`,
         width: `${(x1 - x0) * s}px`, height: `${(y1 - y0) * s}px`,
       });
-      if (entry.image) {
+      // A mask is shown as what it will be — a patch of the colour it
+      // paints. Invisible against the background it impersonates, which is
+      // the point: the preview tells the truth. Hovering reveals it.
+      if (entry.kind === 'mask') {
+        el.style.background = cssInk(entry.color ?? MASK_DEFAULT_COLOR);
+      } else if (entry.image) {
         const img = document.createElement('img');
         img.src = entry.image.url;
         img.alt = entry.note ?? entry.file ?? 'image';
@@ -634,7 +667,7 @@ function updateOverlaySelection() {
     const index = Number(el.dataset.index);
     const selected = index === state.selected;
     el.classList.toggle('is-selected', selected);
-    if (el.classList.contains('placed-image')) {
+    if (hasRect(state.entries[index])) {
       const handle = el.querySelector('.resize-handle');
       if (selected && !handle) attachHandle(el, index);
       if (!selected && handle) handle.remove();
@@ -664,9 +697,9 @@ function startDrag(event, index, mode) {
     // which would destroy the node and lose the final click).
     el,
     startX: event.clientX, startY: event.clientY,
-    orig: entry.kind === 'image' ? { rect: [...entry.rect] } : { x: entry.x, y: entry.y },
+    orig: hasRect(entry) ? { rect: [...entry.rect] } : { x: entry.x, y: entry.y },
     // Text sits `ascent` above its baseline anchor; keep that offset stable.
-    topOffset: entry.kind === 'image' ? 0 : entry.y * state.scale - parseFloat(el.style.top),
+    topOffset: hasRect(entry) ? 0 : entry.y * state.scale - parseFloat(el.style.top),
     moved: false,
   };
   window.addEventListener('pointermove', onDragMove);
@@ -684,7 +717,7 @@ function onDragMove(event) {
   const dy = cdy / s;
   const entry = state.entries[dragging.index];
   const el = dragging.el;
-  if (entry.kind === 'image') {
+  if (hasRect(entry)) {
     const [x0, y0, x1, y1] = dragging.orig.rect;
     if (dragging.mode === 'resize') {
       entry.rect = [x0, y0, Math.max(x0 + 8, x1 + dx), Math.max(y0 + 8, y1 + dy)];
@@ -708,7 +741,7 @@ function onDragEnd() {
   window.removeEventListener('pointerup', onDragEnd);
   if (dragging.moved) {
     const entry = state.entries[dragging.index];
-    if (entry.kind === 'image') entry.rect = entry.rect.map(round1);
+    if (hasRect(entry)) entry.rect = entry.rect.map(round1);
     else { entry.x = round1(entry.x); entry.y = round1(entry.y); }
     // The release click lands right after pointerup; if it never does (the
     // target died in between), the flag disarms itself.
@@ -727,6 +760,9 @@ const ICONS = {
   text: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 5h14M12 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   check: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17 19 6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   image: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 17.5 9.5 13l4 3.5 3-2.5 3 2.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  // The mask icon carries the colour it paints, so several masks stay
+  // tellable apart in the list.
+  mask: '<svg width="12" height="12" viewBox="0 0 24 24"><rect x="3.5" y="7" width="17" height="10" rx="1.5" fill="var(--swatch)" stroke="currentColor" stroke-width="1.8"/></svg>',
 };
 
 function renderPanel() {
@@ -744,6 +780,9 @@ function renderPanel() {
     const icon = document.createElement('span');
     icon.className = 'entry-icon';
     icon.innerHTML = ICONS[entry.kind];
+    if (entry.kind === 'mask') {
+      icon.style.setProperty('--swatch', cssInk(entry.color ?? MASK_DEFAULT_COLOR));
+    }
 
     const main = document.createElement('span');
     main.className = 'entry-main';
@@ -757,6 +796,9 @@ function renderPanel() {
     } else if (entry.kind === 'check') {
       label.textContent = `${t('checkEntry')} ${markDisplay(entry)}`;
       note.textContent = entry.note ?? '';
+    } else if (entry.kind === 'mask') {
+      label.textContent = t('maskEntry');
+      note.textContent = entry.note ?? '';
     } else {
       label.textContent = entry.file ?? 'image';
       note.textContent = entry.image ? (entry.note ?? '') : t('missingImage');
@@ -766,7 +808,7 @@ function renderPanel() {
 
     const coords = document.createElement('span');
     coords.className = 'entry-coords';
-    coords.textContent = entry.kind === 'image'
+    coords.textContent = hasRect(entry)
       ? `p${entry.page} · rect`
       : `p${entry.page} · ${fmt(entry.x)},${fmt(entry.y)}`;
 
@@ -850,11 +892,11 @@ function removeEntry(index) {
 
 // ------------------------------------------------------------- layer order
 
-const KIND_RANK = { image: 0, check: 1, text: 2 };
+const KIND_RANK = { mask: 0, image: 1, check: 2, text: 3 };
 
-// New entries slot into their default layer (images at the bottom, then
-// checks, then texts) — unless the user has taken manual control of the
-// order, in which case new entries land on top.
+// New entries slot into their default layer (masks at the bottom, then
+// images, then checks, then texts) — unless the user has taken manual
+// control of the order, in which case new entries land on top.
 function insertEntry(entry) {
   let index = state.entries.length;
   if (!state.entries.some((e) => e.z !== undefined)) {
@@ -916,6 +958,21 @@ els.overlay.addEventListener('click', (event) => {
   const x = (event.clientX - rect.left) / state.scale;
   const y = (event.clientY - rect.top) / state.scale;
 
+  // Eyedropper in progress: this click hands its colour over, and the
+  // editor comes back where it left off.
+  if (state.picking !== null) {
+    const index = state.picking;
+    stopPicking();
+    state.entries[index].color = sampleColor([x - 1, y - 1, x + 1, y + 1]);
+    openEntry(index);
+    return;
+  }
+
+  if (state.tool === 'mask') {
+    placeMask(x, y);
+    return;
+  }
+
   if (state.tool === 'check') {
     state.selected = insertEntry({ kind: 'check', page: state.page, x: round1(x), y: round1(y) });
     renderOverlay();
@@ -969,6 +1026,15 @@ function openEditPopover(index) {
       showText: preset === 'custom', showStyle: true, showFont: false,
       markPreset: preset,
     });
+  } else if (entry.kind === 'mask') {
+    // A mask has one setting that matters: the colour it impersonates. The
+    // eyedropper is there for the times sampling guessed wrong.
+    fillPopover({
+      ...common, title: t('editMask'),
+      coords: `p.${entry.page} · rect`,
+      text: '', showText: false, showStyle: true, showSize: false, showFont: false,
+      showPick: true, inkLabel: 'maskColor', ink: entry.color ?? MASK_DEFAULT_COLOR,
+    });
   } else {
     fillPopover({
       ...common, title: t('editImage'),
@@ -978,8 +1044,8 @@ function openEditPopover(index) {
   }
 
   const oRect = els.overlay.getBoundingClientRect();
-  const anchorX = entry.kind === 'image' ? entry.rect[2] : entry.x;
-  const anchorY = entry.kind === 'image' ? entry.rect[1] : entry.y;
+  const anchorX = hasRect(entry) ? entry.rect[2] : entry.x;
+  const anchorY = hasRect(entry) ? entry.rect[1] : entry.y;
   positionPopover(oRect.left + anchorX * state.scale + 14, oRect.top + anchorY * state.scale);
 }
 
@@ -992,8 +1058,13 @@ function fillPopover(cfg) {
   els.popoverNote.value = cfg.note;
   els.popoverNote.placeholder = t('notePh');
   els.popoverStyleRow.hidden = !cfg.showStyle;
+  els.popoverSizeLabel.hidden = cfg.showSize === false;
   els.popoverSize.value = cfg.size;
   els.popoverInk.value = inkToHex(cfg.ink ?? state.style.ink);
+  // The colour input means ink for a text, background for a mask: it says so.
+  els.popoverInk.setAttribute('aria-label', t(cfg.inkLabel ?? 'ink'));
+  els.popoverInk.title = t(cfg.inkLabel ?? 'ink');
+  els.popoverPick.hidden = cfg.showPick !== true;
   els.popoverFont.hidden = cfg.showFont === false;
   els.popoverFont.value = cfg.font;
   if (els.popoverFont.value !== cfg.font) els.popoverFont.value = '';
@@ -1059,6 +1130,11 @@ function submitPopover() {
         entry.font = 'zadb';
       }
       applyStyleFields(entry, { note, size, ink });
+    } else if (entry.kind === 'mask') {
+      // Always written out, default or not: a mask without its colour is a
+      // white rectangle, which is exactly the bug this feature exists for.
+      entry.color = ink;
+      if (note) entry.note = note; else delete entry.note;
     } else {
       if (note) entry.note = note; else delete entry.note;
     }
@@ -1082,6 +1158,12 @@ function applyStyleFields(entry, { note, size, font, ink }) {
 
 els.popoverPlace.addEventListener('click', submitPopover);
 $('popover-cancel').addEventListener('click', closePopover);
+els.popoverPick.addEventListener('click', () => {
+  if (popCtx?.mode !== 'edit') return;
+  const { index } = popCtx;
+  closePopover();
+  startPicking(index);
+});
 els.popoverDelete.addEventListener('click', () => {
   if (popCtx?.mode === 'edit') {
     const { index } = popCtx;
@@ -1105,6 +1187,7 @@ function cloneEntry(entry) {
   const copy = { ...entry };
   if (copy.rect) copy.rect = [...copy.rect];
   if (copy.ink) copy.ink = [...copy.ink];
+  if (copy.color) copy.color = [...copy.color];
   delete copy.z; // the paint order is recomputed on insertion
   return copy;
 }
@@ -1114,7 +1197,7 @@ function pasteClipboard() {
   const shift = 10 * clipboard.pastes;
   const copy = cloneEntry(clipboard.entry);
   copy.page = state.page;
-  if (copy.kind === 'image') copy.rect = copy.rect.map((v) => round1(v + shift));
+  if (hasRect(copy)) copy.rect = copy.rect.map((v) => round1(v + shift));
   else {
     copy.x = round1(copy.x + shift);
     copy.y = round1(copy.y + shift);
@@ -1127,7 +1210,7 @@ function pasteClipboard() {
 function nudgeSelected(dx, dy) {
   const entry = state.entries[state.selected];
   if (!entry || entry.page !== state.page) return;
-  if (entry.kind === 'image') {
+  if (hasRect(entry)) {
     entry.rect = [entry.rect[0] + dx, entry.rect[1] + dy,
       entry.rect[2] + dx, entry.rect[3] + dy].map(round1);
   } else {
@@ -1142,7 +1225,7 @@ function updatePanelCoords(index) {
   const entry = state.entries[index];
   for (const li of els.entryList.children) {
     if (Number(li.dataset.index) === index) {
-      li.querySelector('.entry-coords').textContent = entry.kind === 'image'
+      li.querySelector('.entry-coords').textContent = hasRect(entry)
         ? `p${entry.page} · rect`
         : `p${entry.page} · ${fmt(entry.x)},${fmt(entry.y)}`;
       return;
@@ -1156,6 +1239,8 @@ document.addEventListener('keydown', (e) => {
       els.help.hidden = true;
     } else if (!els.popover.hidden) {
       closePopover();
+    } else if (state.picking !== null) {
+      stopPicking();
     } else if (state.selected !== null) {
       state.selected = null;
       updateOverlaySelection();
@@ -1198,6 +1283,200 @@ function placeImage(x, y) {
   renderPanel();
 }
 
+// ------------------------------------------------------------------ masks
+
+// A mask covers a value the blank form arrives with already filled in — and
+// wrong. It covers: whatever is underneath stays in the PDF, extractable
+// with pdftotext. The generation dialog says so; this is a correction tool,
+// not a redaction one.
+
+// The background a mask has to impersonate is already on screen: pdf.js has
+// rendered the page to the canvas. The DOMINANT colour under the rectangle
+// IS that background — what is being covered is, by construction, a
+// minority of the pixels covering it. So the tinted paper, the shaded cell
+// and the ruled table all come out right without asking anything.
+function sampleColor(rect) {
+  const [x0, y0, x1, y1] = rect;
+  const f = state.scale * (window.devicePixelRatio || 1);
+  const px = Math.max(0, Math.floor(x0 * f));
+  const py = Math.max(0, Math.floor(y0 * f));
+  const pw = Math.min(els.canvas.width - px, Math.max(1, Math.ceil((x1 - x0) * f)));
+  const ph = Math.min(els.canvas.height - py, Math.max(1, Math.ceil((y1 - y0) * f)));
+  if (pw <= 0 || ph <= 0) return [...MASK_DEFAULT_COLOR];
+  const { data } = els.canvas.getContext('2d').getImageData(px, py, pw, ph);
+
+  // Vote in coarse buckets, so the anti-aliased fringe of a glyph does not
+  // each pixel count as a colour of its own, then average the true pixels
+  // of the winning bucket to get the value back at full precision.
+  const count = data.length / 4;
+  const stride = Math.max(1, Math.round(Math.sqrt(count / 40_000)));
+  const buckets = new Map();
+  let best = null;
+  for (let p = 0; p < count; p += stride) {
+    const i = p * 4;
+    const key = ((data[i] >> 3) << 10) | ((data[i + 1] >> 3) << 5) | (data[i + 2] >> 3);
+    let acc = buckets.get(key);
+    if (!acc) buckets.set(key, acc = [0, 0, 0, 0]);
+    acc[0] += data[i]; acc[1] += data[i + 1]; acc[2] += data[i + 2]; acc[3] += 1;
+    if (!best || acc[3] > best[3]) best = acc;
+  }
+  if (!best) return [...MASK_DEFAULT_COLOR];
+  return [0, 1, 2].map((c) => channel(best[c] / best[3]));
+}
+
+// A 0-255 sample as the 0-1 channel a description carries. The extremes are
+// snapped: a 254 patch laid on a 255 page is a visible rectangle.
+function channel(v) {
+  const unit = v / 255;
+  if (unit > 0.99) return 1;
+  if (unit < 0.01) return 0;
+  return Math.round(unit * 1000) / 1000;
+}
+
+// Text boxes of a page, in description points, cached for as long as the
+// document lives. pdf.js gives one item per drawn run, anchored on its
+// baseline; the box around it is what a click aims at. Rotated runs are
+// left out — their box would be a lie, and the drag gesture covers them.
+const runsByDoc = new WeakMap();
+
+async function textRuns(pageNumber) {
+  let cache = runsByDoc.get(state.pdfDoc);
+  if (!cache) runsByDoc.set(state.pdfDoc, cache = new Map());
+  if (cache.has(pageNumber)) return cache.get(pageNumber);
+
+  const page = await state.pdfDoc.getPage(pageNumber);
+  const viewport = page.getViewport({ scale: 1 }); // 1 unit = 1 pt, origin top left
+  const content = await page.getTextContent();
+  const runs = [];
+  for (const item of content.items) {
+    if (!item.str?.trim() || !item.width) continue;
+    const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+    if (Math.abs(tx[1]) > 0.01 || Math.abs(tx[2]) > 0.01) continue;
+    const em = Math.abs(tx[3]);
+    if (!em) continue;
+    // Usual proportions of a Latin face around the baseline. Close enough
+    // for a box that stays draggable afterwards.
+    runs.push({
+      x0: tx[4], x1: tx[4] + item.width,
+      y0: tx[5] - em * 0.85, y1: tx[5] + em * 0.25, em,
+    });
+  }
+  cache.set(pageNumber, runs);
+  return runs;
+}
+
+// The run under a click, extended through the neighbours a PDF happened to
+// split it into. The glue is wider than a space and far narrower than the
+// distance to the next field, so "12 34 56" joins up while the label in
+// front of the value stays untouched.
+function runAt(runs, x, y) {
+  const hits = runs.filter((r) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1);
+  if (!hits.length) return null;
+  const hit = hits.reduce((a, b) =>
+    ((a.x1 - a.x0) * (a.y1 - a.y0) <= (b.x1 - b.x0) * (b.y1 - b.y0) ? a : b));
+  const line = runs
+    .filter((r) => Math.abs(r.y1 - hit.y1) < 1 && Math.abs(r.em - hit.em) < 1)
+    .sort((a, b) => a.x0 - b.x0);
+  const glue = hit.em * 0.5;
+  let lo = line.indexOf(hit);
+  let hi = lo;
+  while (lo > 0 && line[lo].x0 - line[lo - 1].x1 < glue) lo -= 1;
+  while (hi < line.length - 1 && line[hi + 1].x0 - line[hi].x1 < glue) hi += 1;
+  const run = line.slice(lo, hi + 1);
+  return [
+    Math.min(...run.map((r) => r.x0)), Math.min(...run.map((r) => r.y0)),
+    Math.max(...run.map((r) => r.x1)), Math.max(...run.map((r) => r.y1)),
+  ];
+}
+
+// The gesture: clicking a wrong value covers exactly that value, clicking
+// blank paper drops a box to size by hand, and dragging draws the area
+// outright — for a stamp, a scan, anything that is not real text.
+async function placeMask(x, y) {
+  let box = null;
+  try {
+    box = runAt(await textRuns(state.page), x, y);
+  } catch { /* no usable text layer: the default box does the job */ }
+  addMask(box
+    ? [box[0] - MASK_PADDING, box[1] - MASK_PADDING, box[2] + MASK_PADDING, box[3] + MASK_PADDING]
+    : [x, y, x + MASK_DEFAULT_BOX[0], y + MASK_DEFAULT_BOX[1]]);
+}
+
+function addMask(rect) {
+  const box = rect.map(round1);
+  state.selected = insertEntry({ kind: 'mask', page: state.page, rect: box, color: sampleColor(box) });
+  renderOverlay();
+  renderPanel();
+}
+
+// Eyedropper: sampling guessed wrong (a gradient, a texture, a colour space
+// the screen renders slightly off), so the user points at the right colour
+// instead. The overlay lets the click through to the page underneath.
+function startPicking(index) {
+  state.picking = index;
+  els.overlay.classList.add('is-picking');
+}
+
+function stopPicking() {
+  state.picking = null;
+  els.overlay.classList.remove('is-picking');
+}
+
+// Drag on empty page with the mask tool: a rubber band, then the area it drew.
+let band = null;
+
+els.overlay.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0 || state.tool !== 'mask' || state.picking !== null) return;
+  if (event.target !== els.overlay) return; // a placed entry starts its own drag
+  event.preventDefault();
+  const rect = els.overlay.getBoundingClientRect();
+  band = {
+    x: (event.clientX - rect.left) / state.scale,
+    y: (event.clientY - rect.top) / state.scale,
+    startX: event.clientX, startY: event.clientY,
+    el: null,
+  };
+  window.addEventListener('pointermove', onBandMove);
+  window.addEventListener('pointerup', onBandEnd);
+});
+
+function bandRect(event) {
+  const rect = els.overlay.getBoundingClientRect();
+  const x = (event.clientX - rect.left) / state.scale;
+  const y = (event.clientY - rect.top) / state.scale;
+  return [Math.min(band.x, x), Math.min(band.y, y), Math.max(band.x, x), Math.max(band.y, y)];
+}
+
+function onBandMove(event) {
+  if (!band.el) {
+    if (Math.abs(event.clientX - band.startX) < DRAG_THRESHOLD
+        && Math.abs(event.clientY - band.startY) < DRAG_THRESHOLD) return;
+    band.el = document.createElement('div');
+    band.el.className = 'band';
+    els.overlay.appendChild(band.el);
+  }
+  const [x0, y0, x1, y1] = bandRect(event);
+  const s = state.scale;
+  Object.assign(band.el.style, {
+    left: `${x0 * s}px`, top: `${y0 * s}px`,
+    width: `${(x1 - x0) * s}px`, height: `${(y1 - y0) * s}px`,
+  });
+}
+
+function onBandEnd(event) {
+  window.removeEventListener('pointermove', onBandMove);
+  window.removeEventListener('pointerup', onBandEnd);
+  if (band.el) {
+    // Off the overlay before sampling: the band must not colour its own mask.
+    band.el.remove();
+    // The click that follows the release must not place a second mask.
+    suppressClick = true;
+    setTimeout(() => { suppressClick = false; }, 0);
+    addMask(bandRect(event));
+  }
+  band = null;
+}
+
 // ---------------------------------------------------------------- toolbar
 
 document.querySelectorAll('.tool').forEach((button) => {
@@ -1205,6 +1484,7 @@ document.querySelectorAll('.tool').forEach((button) => {
     document.querySelectorAll('.tool').forEach((b) => b.classList.remove('is-active'));
     button.classList.add('is-active');
     state.tool = button.dataset.tool;
+    stopPicking();
     closePopover();
   });
 });
@@ -1324,14 +1604,18 @@ function serializeToml() {
 
   // Grouped by kind, as parsing does: export -> import -> export yields
   // the same file byte for byte.
-  const grouped = ['text', 'check', 'image']
+  const grouped = ['mask', 'text', 'check', 'image']
     .flatMap((kind) => state.entries.filter((e) => e.kind === kind));
   for (const entry of grouped) {
     out.push('');
     out.push(`[[${entry.kind}]]`);
     out.push(`page = ${entry.page}`);
     if (entry.z !== undefined) out.push(`z = ${entry.z}`);
-    if (entry.kind === 'image') {
+    if (entry.kind === 'mask') {
+      out.push(`rect = [${entry.rect.map(fmt).join(', ')}]`);
+      // Like ink, a sampled colour keeps its precision.
+      out.push(`color = [${(entry.color ?? MASK_DEFAULT_COLOR).map(String).join(', ')}]`);
+    } else if (entry.kind === 'image') {
       out.push(`rect = [${entry.rect.map(fmt).join(', ')}]`);
       out.push(`file = ${tomlString(entry.file ?? 'image.png')}`);
     } else {
@@ -1424,17 +1708,21 @@ $('generate').addEventListener('click', async () => {
     els.doneFonts.appendChild(link);
   }
 
-  const counts = { text: 0, check: 0, image: 0 };
+  const counts = { text: 0, check: 0, image: 0, mask: 0 };
   for (const entry of state.entries) counts[entry.kind] += 1;
   els.doneSummary.textContent =
     `${tn(counts.text, 'text')} · ${tn(counts.check, 'check')} · ${tn(counts.image, 'image')}`
+    + (counts.mask ? ` · ${tn(counts.mask, 'mask')}` : '')
     + `, ${t('across')} ${tn(state.pdfDoc.numPages, 'page')}`;
+  // Said where the file leaves the app, because that is where it matters:
+  // a mask hides a value from the eye, not from pdftotext.
+  els.doneMaskWarn.hidden = !counts.mask;
   els.done.hidden = false;
 });
 
 function fontsInUse() {
   return new Set(state.entries
-    .filter((e) => e.kind !== 'image')
+    .filter((e) => e.kind === 'text' || e.kind === 'check')
     .map((e) => e.font ?? state.style.font));
 }
 
@@ -1470,7 +1758,13 @@ async function buildPdf(embed) {
       return null;
     }
     const pageHeight = page.getHeight();
-    if (entry.kind === 'image') {
+    if (entry.kind === 'mask') {
+      const [x0, y0, x1, y1] = entry.rect;
+      page.drawRectangle({
+        x: x0, y: pageHeight - y1, width: x1 - x0, height: y1 - y0,
+        color: rgb(...(entry.color ?? MASK_DEFAULT_COLOR)),
+      });
+    } else if (entry.kind === 'image') {
       const [x0, y0, x1, y1] = entry.rect;
       if (!images.has(entry.image)) {
         images.set(entry.image, entry.image.mime === 'image/png'

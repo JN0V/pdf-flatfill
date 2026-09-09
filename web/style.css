@@ -277,6 +277,37 @@ button { font: inherit; cursor: pointer; }
   border: 1.5px solid var(--accent);
   background: rgba(29, 53, 196, 0.04);
 }
+/* A mask is drawn as exactly what it will paint: a patch of its own colour,
+   invisible against the background it impersonates — which is the point of
+   the preview. Hence outlines, not borders: they mark it on hover and when
+   selected without eating a pixel of the real area. */
+.placed-mask {
+  position: absolute;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.placed-mask:active { cursor: grabbing; }
+.placed-mask:hover { outline: 1.5px dashed var(--accent); }
+.placed-mask.is-selected { outline: 1.5px solid var(--accent); }
+
+/* The rubber band drawn while dragging a mask area. */
+.band {
+  position: absolute;
+  border: 1.5px dashed var(--accent);
+  background: rgba(29, 53, 196, 0.08);
+  pointer-events: none;
+}
+
+/* Eyedropper: the whole page becomes the target, placed entries included —
+   the colour must come from the page underneath, not from what covers it. */
+.overlay.is-picking {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  cursor: crosshair;
+}
+.overlay.is-picking > * { pointer-events: none; }
+
 .resize-handle {
   position: absolute;
   right: -6px; bottom: -6px;
@@ -439,7 +470,9 @@ button { font: inherit; cursor: pointer; }
 
 /* ===== Small screens: stack the panel below the page ===== */
 
-@media (max-width: 720px) {
+/* Four tools plus the file chip plus five buttons no longer fit on one line
+   of a landscape phone: the top bar wraps well before the layout does. */
+@media (max-width: 900px) {
   .topbar {
     height: auto; min-height: 56px;
     flex-wrap: wrap;
@@ -448,8 +481,11 @@ button { font: inherit; cursor: pointer; }
     justify-content: center;
   }
   .topbar-left { min-width: 0; }
-  .topbar-right { flex-wrap: wrap; justify-content: center; }
   .file-chip { max-width: 46vw; }
+}
+
+@media (max-width: 720px) {
+  .topbar-right { flex-wrap: wrap; justify-content: center; }
   .workspace { flex-direction: column; }
   .viewer { min-height: 0; padding: 12px 12px 56px; }
   .panel {
@@ -642,6 +678,18 @@ button { font: inherit; cursor: pointer; }
   cursor: pointer;
 }
 .picker-list li:hover { background: var(--accent-soft); }
+
+/* Said once, plainly, where the file leaves the app: a cover is not a
+   deletion. Amber rather than red — it is a caveat, not an error. */
+.dialog-warn {
+  margin: -4px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #F0DCA8;
+  background: #FDF7E7;
+  font-size: 12.5px; line-height: 1.5; color: #6B5416;
+  text-align: left;
+}
 
 .dialog-hint {
   margin: 0;

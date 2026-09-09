@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Fill a non-interactive PDF by laying text, check marks and images onto it.
 
+Masks are the fourth kind: an opaque rectangle painted UNDER everything, to
+cover a value the blank form arrives with already filled in — and wrong.
+
 The what (coordinates and values) lives in a TOML description file; the how
 lives here. See README.md for the format and the pitfalls.
 
@@ -18,6 +21,10 @@ from pathlib import Path
 DEFAULT_INK = (0.05, 0.15, 0.7)   # ink blue
 DEFAULT_FONT = "helv"
 DEFAULT_SIZE = 10
+# The background a mask impersonates when its description does not say. White
+# is only the most common case: forms are printed on tinted paper, in shaded
+# cells and over ruled tables, so `color` is what usually decides.
+DEFAULT_MASK = (1, 1, 1)
 
 
 def die(message):
@@ -233,14 +240,19 @@ def main():
     texts = form.get("text", [])
     checks = form.get("check", [])
     images = form.get("image", [])
+    masks = form.get("mask", [])
 
-    if not (texts or checks or images):
-        die(f"{form_path} describes no [[text]], [[check]] or [[image]]")
+    if not (texts or checks or images or masks):
+        die(f"{form_path} describes no [[text]], [[check]], [[image]] or [[mask]]")
+
+    contents = f"{len(texts)} text(s), {len(checks)} mark(s), {len(images)} image(s)"
+    if masks:
+        contents += f", {len(masks)} mask(s)"
 
     print(f"Description : {form_path}")
     print(f"Source      : {source}")
     print(f"Output      : {output}")
-    print(f"Contents    : {len(texts)} text(s), {len(checks)} mark(s), {len(images)} image(s)")
+    print(f"Contents    : {contents}")
 
     # Imported late: a dry run must be able to proof-read a description on a
     # machine where PyMuPDF is not installed.
@@ -250,17 +262,41 @@ def main():
 
     doc = fitz.open(source) if fitz else None
 
-    # Layer order: images at the bottom, then checks, then texts — a
-    # signature's opaque background must not eat the name written next to
-    # it. An optional integer `z` overrides it, higher painting later.
+    # Layer order: masks at the very bottom, then images, then checks, then
+    # texts — a signature's opaque background must not eat the name written
+    # next to it, and a mask must never eat what it was drawn to make room
+    # for. An optional integer `z` overrides it, higher painting later.
     paint_ops = []
+
+    # A mask COVERS, it does not delete: the rectangle is painted over the
+    # page and whatever was under it stays in the PDF's content stream,
+    # extractable with pdftotext. It is there to correct a wrong value, not
+    # to redact a secret one.
+    for index, entry in enumerate(masks, 1):
+        require(entry, ("rect",), "mask", index)
+        rect = entry["rect"]
+        if len(rect) != 4:
+            die(f"[[mask]] #{index}: 'rect' expects 4 values (x0, y0, x1, y1)")
+        color = entry.get("color", DEFAULT_MASK)
+        if len(color) != 3:
+            die(f"[[mask]] #{index}: 'color' expects 3 values (r, g, b) from 0 to 1")
+        page = get_page(doc, entry, "mask", index)
+        if not args.dry_run:
+            paint_ops.append((entry.get("z", 0), 0, len(paint_ops), lambda
+                page=page, rect=rect, color=color: page.draw_rect(
+                    fitz.Rect(*rect),
+                    color=None,           # no outline: a fill and nothing else
+                    fill=tuple(color),
+                    width=0,
+                    overlay=True,
+                )))
 
     for index, entry in enumerate(texts, 1):
         require(entry, ("x", "y", "text"), "text", index)
         fargs = font_args(entry, "text", index)
         page = get_page(doc, entry, "text", index)
         if not args.dry_run:
-            paint_ops.append((entry.get("z", 0), 2, len(paint_ops), lambda
+            paint_ops.append((entry.get("z", 0), 3, len(paint_ops), lambda
                 page=page, entry=entry, fargs=fargs: page.insert_text(
                     fitz.Point(entry["x"], entry["y"]),
                     str(entry["text"]),
@@ -274,7 +310,7 @@ def main():
         fargs = font_args(entry, "check", index)
         page = get_page(doc, entry, "check", index)
         if not args.dry_run:
-            paint_ops.append((entry.get("z", 0), 1, len(paint_ops), lambda
+            paint_ops.append((entry.get("z", 0), 2, len(paint_ops), lambda
                 page=page, entry=entry, fargs=fargs: page.insert_text(
                     fitz.Point(entry["x"], entry["y"]),
                     entry.get("mark", "X"),
@@ -293,7 +329,7 @@ def main():
             die(f"[[image]] #{index}: file not found: {picture}")
         page = get_page(doc, entry, "image", index)
         if not args.dry_run:
-            paint_ops.append((entry.get("z", 0), 0, len(paint_ops), lambda
+            paint_ops.append((entry.get("z", 0), 1, len(paint_ops), lambda
                 page=page, rect=rect, picture=picture, entry=entry: page.insert_image(
                     fitz.Rect(*rect),
                     filename=str(picture),

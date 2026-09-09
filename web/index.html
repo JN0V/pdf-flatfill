@@ -84,6 +84,10 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="9.5" r="1.6" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 17.5 9.5 13l4 3.5 3-2.5 3 2.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span data-i18n="toolImage">Image</span>
       </button>
+      <button class="tool" type="button" data-tool="mask">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 5.5h8M4 18.5h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="3.2" y="9" width="17.6" height="6" rx="1.2" fill="currentColor" fill-opacity="0.18" stroke="currentColor" stroke-width="1.6"/></svg>
+        <span data-i18n="toolMask">Cover</span>
+      </button>
     </div>
 
     <div class="topbar-right">
@@ -165,8 +169,11 @@
     </div>
     <input id="popover-note" type="text" placeholder="Note" autocomplete="off">
     <div id="popover-style-row" class="popover-row">
-      <label class="popover-size"><span data-i18n="size">Size</span> <input id="popover-size" type="number" min="4" max="72" step="1"></label>
+      <label id="popover-size-label" class="popover-size"><span data-i18n="size">Size</span> <input id="popover-size" type="number" min="4" max="72" step="1"></label>
       <input id="popover-ink" type="color" data-i18n-aria="ink" aria-label="Ink">
+      <button id="popover-pick" class="btn-icon" type="button" data-i18n-aria="maskPick" aria-label="Pick the colour from the page" hidden>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17.8 1.7l4.5 4.5-2.2 2.2-4.5-4.5 2.2-2.2ZM14.6 6.8 5.5 15.9V19h3.1l9.1-9.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
       <select id="popover-font" aria-label="Font">
         <option value="" data-i18n="fontDefault">Default font</option>
         <option value="helv">Helvetica</option>
@@ -196,6 +203,7 @@
       </div>
       <h2 data-i18n="doneTitle">Your PDF is ready</h2>
       <p id="done-summary" class="dialog-summary"></p>
+      <p id="done-mask-warn" class="dialog-warn" data-i18n="maskWarn" hidden>A cover hides a value, it does not delete it: the original text stays inside the PDF and can still be extracted from it.</p>
       <a id="done-pdf" class="download download-primary" download>
         <span class="download-name" id="done-pdf-name"></span>
         <span class="download-sub"><span data-i18n="donePdfSub">The form, filled in</span><span id="done-pdf-size" class="download-size"></span></span>
@@ -224,6 +232,7 @@
       <p class="help-line" data-i18n="helpSelect">One click selects, a double click edits.</p>
       <p class="help-line" data-i18n="helpDrag">Drag an element to move it; the corner handle resizes an image.</p>
       <p class="help-line" data-i18n="helpLayers">Restack layers by dragging the list rows, or with the ▲▼ arrows.</p>
+      <p class="help-line" data-i18n="helpMask">Cover: click a wrong value to hide it under the colour of its background, or drag to draw the area yourself.</p>
       <div class="help-rows">
         <div class="help-row"><span class="kbd">↑ ↓ ← →</span><span data-i18n="helpNudge">Nudge the selection by one point</span></div>
         <div class="help-row"><span class="kbd">Shift ↑ ↓ ← →</span><span data-i18n="helpNudge10">…by ten points</span></div>

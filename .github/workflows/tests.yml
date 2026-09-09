@@ -42,6 +42,10 @@ jobs:
           if [ -f tests/e2e/.artifacts/formulaire-font.toml ]; then
             bin/fill-pdf tests/e2e/.artifacts/formulaire-font.toml --dry-run
           fi
+          # The covering description goes all the way through: only a real
+          # run paints the rectangle, and only then does draw_rect get tried.
+          bin/fill-pdf tests/e2e/.artifacts/prefilled.toml --dry-run
+          bin/fill-pdf tests/e2e/.artifacts/prefilled.toml --force
 
       # The self-contained loop: fill for real with --embed, unpack the
       # output into an empty directory, and the description, source and

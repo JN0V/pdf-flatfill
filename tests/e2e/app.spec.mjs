@@ -3,7 +3,10 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { parse as parseToml } from 'smol-toml';
-import { makeFixtures, fetchSignatureFont, extractPageText, extractAttachments, ARTIFACTS } from './fixtures.mjs';
+import {
+  makeFixtures, makePrefilledFixture, fetchSignatureFont,
+  extractPageText, extractAttachments, PREFILLED, ARTIFACTS,
+} from './fixtures.mjs';
 
 let pdfPath, pngPath;
 
@@ -428,6 +431,153 @@ test.describe('layer order', () => {
     const form = parseToml(readFileSync(`${ARTIFACTS}layers.toml`, 'utf8'));
     expect(form.text[0].z).toBe(0);
     expect(form.image[0].z).toBe(1);
+  });
+});
+
+// The form arrived already filled in, and wrong, on tinted paper. One click
+// on the wrong value has to make it disappear — under the colour of ITS
+// background, not under a white rectangle that would show.
+test.describe.serial('covering a value the form arrived with', () => {
+  let prefilledPath;
+  const scale = 1.5; // fit to width for this viewport, as elsewhere in the suite
+
+  test.beforeAll(async () => {
+    prefilledPath = await makePrefilledFixture();
+  });
+
+  test('one click covers the wrong value in its own background colour', async ({ page }) => {
+    await page.goto('/');
+    await page.setInputFiles('#file-input', prefilledPath);
+    await expect(page.locator('#editor')).toBeVisible();
+    await page.click('.tool[data-tool="mask"]');
+
+    // 100,212 pt: inside "DUPOND", inside the tinted band.
+    await page.click('#overlay', { position: { x: 100 * scale, y: 212 * scale } });
+    await expect(page.locator('.placed-mask')).toHaveCount(1);
+    await expect(page.locator('.entry')).toHaveCount(1);
+    await expect(page.locator('.entry-text').first()).toHaveText('Masque');
+    // Nothing to type: no popover on the way.
+    await expect(page.locator('#popover')).toBeHidden();
+
+    const [toml] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#export-toml'),
+    ]);
+    await toml.saveAs(`${ARTIFACTS}prefilled.toml`);
+    const form = parseToml(readFileSync(`${ARTIFACTS}prefilled.toml`, 'utf8'));
+    expect(form.mask).toHaveLength(1);
+    const [mask] = form.mask;
+
+    // Snapped to the text pdf.js reports there, padded by a point: the box
+    // opens just before the D and stays inside the band.
+    expect(mask.rect[0]).toBeGreaterThan(PREFILLED.x - 4);
+    expect(mask.rect[0]).toBeLessThan(PREFILLED.x);
+    expect(mask.rect[2] - mask.rect[0]).toBeGreaterThan(30);
+    expect(mask.rect[1]).toBeGreaterThan(PREFILLED.band[1]);
+    expect(mask.rect[3]).toBeLessThan(PREFILLED.band[3]);
+
+    // Sampled off the page rather than assumed white — the whole point.
+    PREFILLED.bandColor.forEach((channel, i) => {
+      expect(Math.abs(mask.color[i] - channel)).toBeLessThan(0.02);
+    });
+  });
+
+  test('reopened, generated: the value is gone from sight, not from the file', async ({ page }) => {
+    await page.goto('/');
+    await page.setInputFiles('#file-input', [prefilledPath, `${ARTIFACTS}prefilled.toml`]);
+    await expect(page.locator('#editor')).toBeVisible();
+    await expect(page.locator('.placed-mask')).toHaveCount(1);
+
+    await page.click('#generate');
+    await expect(page.locator('#done')).toBeVisible();
+    await expect(page.locator('#done-summary')).toContainText('1 masque');
+    // The caveat is stated where the file leaves the app.
+    await expect(page.locator('#done-mask-warn')).toBeVisible();
+
+    await page.locator('#embed-desc').uncheck(); // so it reopens as a plain PDF
+    const [pdf] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#done-pdf'),
+    ]);
+    await pdf.saveAs(`${ARTIFACTS}prefilled-rempli.pdf`);
+
+    // It covers: where the wrong value was, the page now shows the band.
+    await page.goto('/');
+    await page.setInputFiles('#file-input', `${ARTIFACTS}prefilled-rempli.pdf`);
+    await expect(page.locator('#editor')).toBeVisible();
+    // Polled: the canvas is white until pdf.js has finished painting it.
+    await expect.poll(async () => {
+      const pixel = await page.evaluate(([x, y, width]) => {
+        const canvas = document.getElementById('page-canvas');
+        const f = canvas.width / width; // device pixels per point
+        const { data } = canvas.getContext('2d')
+          .getImageData(Math.round(x * f), Math.round(y * f), 1, 1);
+        return [data[0], data[1], data[2]];
+      }, [100, 212, PREFILLED.page[0]]);
+      return Math.max(...PREFILLED.bandColor.map((c, i) => Math.abs(pixel[i] - c * 255)));
+    }).toBeLessThan(3);
+
+    // It does not delete: the original text is still inside the PDF. This
+    // is the feature's one caveat, asserted rather than assumed.
+    expect(await extractPageText(readFileSync(`${ARTIFACTS}prefilled-rempli.pdf`), 1))
+      .toContain(PREFILLED.text);
+  });
+
+  test('dragging draws the area, where there is no text to snap to', async ({ page }) => {
+    await page.goto('/');
+    await page.setInputFiles('#file-input', prefilledPath);
+    await expect(page.locator('#editor')).toBeVisible();
+    await page.click('.tool[data-tool="mask"]');
+
+    const overlay = await page.locator('#overlay').boundingBox();
+    const at = (x, y) => [overlay.x + x * scale, overlay.y + y * scale];
+    await page.mouse.move(...at(350, 400));
+    await page.mouse.down();
+    await page.mouse.move(...at(450, 424), { steps: 5 });
+    await page.mouse.up();
+
+    await expect(page.locator('.placed-mask')).toHaveCount(1);
+    // The release must not place a second one, nor open anything.
+    await expect(page.locator('.entry')).toHaveCount(1);
+    await expect(page.locator('#popover')).toBeHidden();
+
+    const [toml] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#export-toml'),
+    ]);
+    await toml.saveAs(`${ARTIFACTS}prefilled-drag.toml`);
+    const [mask] = parseToml(readFileSync(`${ARTIFACTS}prefilled-drag.toml`, 'utf8')).mask;
+    [350, 400, 450, 424].forEach((expected, i) => {
+      expect(Math.abs(mask.rect[i] - expected)).toBeLessThan(1);
+    });
+    expect(mask.color).toEqual([1, 1, 1]); // blank paper, and it says so
+  });
+
+  test('the eyedropper takes the colour from where it is pointed', async ({ page }) => {
+    await page.goto('/');
+    await page.setInputFiles('#file-input', prefilledPath);
+    await expect(page.locator('#editor')).toBeVisible();
+    await page.click('.tool[data-tool="mask"]');
+
+    // A cover placed on blank paper: white, and wrong for where it will go.
+    await page.click('#overlay', { position: { x: 400 * scale, y: 500 * scale } });
+    await page.locator('.placed-mask').dblclick();
+    await expect(page.locator('#popover-title')).toHaveText('Modifier le masque');
+    // A cover has no size and no font to set: only its colour.
+    await expect(page.locator('#popover-size-label')).toBeHidden();
+    await expect(page.locator('#popover-font')).toBeHidden();
+
+    await page.click('#popover-pick');
+    await expect(page.locator('#popover')).toBeHidden();
+    await expect(page.locator('#overlay')).toHaveClass(/is-picking/);
+    // Point at the tinted band; the editor comes back with its colour.
+    await page.click('#overlay', { position: { x: 280 * scale, y: 212 * scale } });
+    await expect(page.locator('#popover-title')).toHaveText('Modifier le masque');
+    const hex = await page.locator('#popover-ink').inputValue();
+    const picked = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    PREFILLED.bandColor.forEach((channel, i) => {
+      expect(Math.abs(picked[i] - channel * 255)).toBeLessThan(3);
+    });
   });
 });
 
