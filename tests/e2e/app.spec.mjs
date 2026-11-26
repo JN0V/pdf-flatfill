@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { parse as parseToml } from 'smol-toml';
 import {
-  makeFixtures, makePrefilledFixture, fetchSignatureFont,
+  makeFixtures, makePrefilledFixture, makeStaleObjStmFixture, fetchSignatureFont,
   extractPageText, extractAttachments, PREFILLED, ARTIFACTS,
 } from './fixtures.mjs';
 
@@ -773,6 +773,27 @@ test.describe.serial('a self-contained filled PDF', () => {
     await pdf.saveAs(`${ARTIFACTS}plain.pdf`);
     expect(await extractAttachments(readFileSync(`${ARTIFACTS}plain.pdf`))).toEqual({});
   });
+});
+
+test('a form with a leftover object stream from an older save still generates', async ({ page }) => {
+  const errors = [];
+  page.on('dialog', async (d) => { errors.push(d.message()); await d.dismiss(); });
+  await page.goto('/');
+  await page.setInputFiles('#file-input', makeStaleObjStmFixture());
+  await expect(page.locator('#editor')).toBeVisible();
+  await expect(page.locator('#page-count')).toHaveText('1');
+  await page.click('#overlay', { position: { x: 150, y: 250 } });
+  await page.fill('#popover-text', 'INTACT');
+  await page.click('#popover-place');
+  await page.click('#generate');
+  await expect(page.locator('#done')).toBeVisible();
+  expect(errors).toEqual([]);
+  const [pdf] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('#done-pdf'),
+  ]);
+  await pdf.saveAs(`${ARTIFACTS}stale-objstm-filled.pdf`);
+  expect(await extractPageText(readFileSync(`${ARTIFACTS}stale-objstm-filled.pdf`), 1)).toContain('INTACT');
 });
 
 test.describe('copy and paste', () => {

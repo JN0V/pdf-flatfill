@@ -1726,11 +1726,36 @@ function fontsInUse() {
     .map((e) => e.font ?? state.style.font));
 }
 
+// pdf-lib ignores the cross-reference table: it reads every object in file
+// order, the last definition winning, and unpacks every object stream it
+// meets. A file rewritten in place can keep object streams from an earlier
+// save that its final xref no longer reaches; pdf-lib then lets those stale
+// objects replace the live ones (a wrong page tree, resources pointing at
+// images) and drawing fails. When the final xref is a classic table with no
+// /Prev and no /XRefStm, no object stream can be live — nothing in such a
+// table can point into one — so their type is renamed, same length, offsets
+// untouched, and pdf-lib leaves them packed. Readers that follow the xref
+// (pdf.js, MuPDF) never saw them anyway.
+function withoutDeadObjectStreams(bytes) {
+  const text = new TextDecoder('latin1').decode(bytes); // one char per byte
+  const at = text.lastIndexOf('startxref');
+  const offset = at < 0 ? NaN : parseInt(text.slice(at + 9, at + 40).trim(), 10);
+  if (!(offset >= 0) || !/^\s*xref\b/.test(text.slice(offset, offset + 16))) return bytes;
+  const trailer = text.slice(text.indexOf('trailer', offset), at);
+  if (/\/(Prev|XRefStm)\b/.test(trailer)) return bytes;
+  const hits = [...text.matchAll(/\/Type\s*\/ObjStm\b/g)];
+  if (!hits.length) return bytes;
+  const out = bytes.slice();
+  const dead = new TextEncoder().encode('Orphan'); // as long as "ObjStm"
+  for (const hit of hits) out.set(dead, hit.index + hit[0].length - 6);
+  return out;
+}
+
 // Builds the output from the current state; null when an entry aims outside
 // the document (only a resumed description can do that), after saying so.
 async function buildPdf(embed) {
   const { PDFDocument, rgb } = PDFLib;
-  const doc = await PDFDocument.load(state.pdfBytes);
+  const doc = await PDFDocument.load(withoutDeadObjectStreams(state.pdfBytes));
   const pages = doc.getPages();
   const fonts = new Map();
   const images = new Map(); // one XObject per shared file, however many placements
@@ -1825,7 +1850,15 @@ async function buildPdf(embed) {
 // lives where the file is picked up, so toggling it regenerates the
 // download, its visible size and the closing advice on the spot.
 async function refreshDonePdf() {
-  const bytes = await buildPdf(els.embedDesc.checked);
+  let bytes;
+  try {
+    bytes = await buildPdf(els.embedDesc.checked);
+  } catch (err) {
+    // A PDF pdf-lib cannot rewrite must say so, not leave the button dead.
+    console.error(err);
+    alert(t('buildFailed', { msg: err.message }));
+    return false;
+  }
   if (!bytes) return false;
   if (els.donePdf.href) URL.revokeObjectURL(els.donePdf.href);
   els.donePdf.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));

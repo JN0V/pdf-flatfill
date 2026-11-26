@@ -91,3 +91,37 @@ export async function extractPageText(bytes, pageNumber) {
   const content = await page.getTextContent();
   return content.items.map((item) => item.str).join(' ');
 }
+
+// A form saved over an older version of itself (seen in the wild from
+// PDFCreator): the final xref is a classic table, but the file still holds
+// an object stream from the earlier save that redefines page 3 with fonts
+// pointing at an image. Readers that follow the xref never see it; pdf-lib,
+// which reads every object in file order, did — and drawing failed.
+export function makeStaleObjStmFixture() {
+  mkdirSync(ARTIFACTS, { recursive: true });
+  const stale = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font 6 0 R >> >>';
+  const header = '3 0 ';
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font 4 0 R >> /Contents 5 0 R >>',
+    '<< /F1 7 0 R >>',
+    '<< /Length 0 >>\nstream\n\nendstream',
+    '<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Length 1 >>\nstream\n\0\nendstream',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Type /ObjStm /N 1 /First ${header.length} /Length ${header.length + stale.length} >>\nstream\n${header}${stale}\nendstream`,
+  ];
+  let body = '%PDF-1.6\n';
+  const offsets = [];
+  objects.forEach((obj, i) => {
+    offsets.push(body.length);
+    body += `${i + 1} 0 obj\n${obj}\nendobj\n`;
+  });
+  const xref = body.length;
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const off of offsets) body += `${String(off).padStart(10, '0')} 00000 n \n`;
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  const path = `${ARTIFACTS}stale-objstm.pdf`;
+  writeFileSync(path, Buffer.from(body, 'latin1'));
+  return path;
+}

@@ -94,6 +94,7 @@ export const translations = {
     missingHelp: 'Cliquez sur ces entrées dans le panneau pour joindre les fichiers.',
     empty: 'Rien à poser : placez au moins un texte, une coche, une image ou un masque.',
     pageRange: 'Une entrée vise la page {page}, mais le PDF n’en a que {count}.',
+    buildFailed: 'Impossible de générer le PDF : {msg}',
   },
   en: {
     helpTitle: 'Shortcuts',
@@ -162,6 +163,7 @@ export const translations = {
     missingHelp: 'Click those entries in the panel to attach the files.',
     empty: 'Nothing to place yet: add at least one text, check mark, image or cover.',
     pageRange: 'An entry targets page {page}, but the PDF only has {count}.',
+    buildFailed: 'Could not generate the PDF: {msg}',
   },
   de: {
     helpTitle: 'Tastenkürzel',
@@ -230,6 +232,7 @@ export const translations = {
     missingHelp: 'Klicken Sie diese Einträge im Panel an, um die Dateien anzuhängen.',
     empty: 'Nichts zu platzieren: Fügen Sie mindestens einen Text, ein Häkchen, ein Bild oder eine Abdeckung hinzu.',
     pageRange: 'Ein Eintrag zielt auf Seite {page}, das PDF hat aber nur {count}.',
+    buildFailed: 'Das PDF konnte nicht erzeugt werden: {msg}',
   },
   es: {
     helpTitle: 'Atajos',
@@ -298,6 +301,7 @@ export const translations = {
     missingHelp: 'Haz clic en esas entradas del panel para adjuntar los archivos.',
     empty: 'Nada que colocar: añade al menos un texto, una marca, una imagen o una cubierta.',
     pageRange: 'Una entrada apunta a la página {page}, pero el PDF solo tiene {count}.',
+    buildFailed: 'No se pudo generar el PDF: {msg}',
   },
   it: {
     helpTitle: 'Scorciatoie',
@@ -366,6 +370,7 @@ export const translations = {
     missingHelp: 'Fai clic su quelle voci nel pannello per allegare i file.',
     empty: 'Niente da posizionare: aggiungi almeno un testo, una spunta, un’immagine o una copertura.',
     pageRange: 'Una voce punta alla pagina {page}, ma il PDF ne ha solo {count}.',
+    buildFailed: 'Impossibile generare il PDF: {msg}',
   },
   pt: {
     helpTitle: 'Atalhos',
@@ -434,6 +439,7 @@ export const translations = {
     missingHelp: 'Clique nessas entradas no painel para anexar os arquivos.',
     empty: 'Nada a posicionar: adicione ao menos um texto, uma marca, uma imagem ou uma cobertura.',
     pageRange: 'Uma entrada aponta para a página {page}, mas o PDF só tem {count}.',
+    buildFailed: 'Não foi possível gerar o PDF: {msg}',
   },
   ru: {
     helpTitle: 'Горячие клавиши',
@@ -510,6 +516,7 @@ export const translations = {
     missingHelp: 'Кликните эти записи на панели, чтобы прикрепить файлы.',
     empty: 'Нечего размещать: добавьте хотя бы текст, галочку, изображение или закраску.',
     pageRange: 'Запись указывает на страницу {page}, но в PDF их только {count}.',
+    buildFailed: 'Не удалось создать PDF: {msg}',
   },
   zh: {
     helpTitle: '快捷键',
@@ -578,6 +585,7 @@ export const translations = {
     missingHelp: '点击面板中的这些条目以附加文件。',
     empty: '还没有内容：请至少添加一段文字、一个勾选、一张图片或一个遮盖。',
     pageRange: '有条目指向第 {page} 页，但 PDF 只有 {count} 页。',
+    buildFailed: '无法生成 PDF：{msg}',
   },
   hi: {
     helpTitle: 'शॉर्टकट',
@@ -646,6 +654,7 @@ export const translations = {
     missingHelp: 'फ़ाइलें संलग्न करने के लिए पैनल में इन प्रविष्टियों पर क्लिक करें।',
     empty: 'रखने के लिए कुछ नहीं: कम से कम एक टेक्स्ट, चेक, चित्र या आवरण जोड़ें।',
     pageRange: 'एक प्रविष्टि पृष्ठ {page} की ओर इशारा करती है, पर PDF में केवल {count} पृष्ठ हैं।',
+    buildFailed: 'PDF नहीं बनाया जा सका: {msg}',
   },
   ar: {
     helpTitle: 'الاختصارات',
@@ -714,6 +723,7 @@ export const translations = {
     missingHelp: 'انقر هذه الإدخالات في اللوحة لإرفاق الملفات.',
     empty: 'لا شيء لوضعه: أضف نصًا أو علامة أو صورة أو تغطية واحدة على الأقل.',
     pageRange: 'إدخال يشير إلى الصفحة {page} لكن الملف يحوي {count} فقط.',
+    buildFailed: 'تعذّر إنشاء ملف PDF: {msg}',
   },
   bn: {
     helpTitle: 'শর্টকাট',
@@ -782,6 +792,7 @@ export const translations = {
     missingHelp: 'ফাইল যুক্ত করতে প্যানেলের এই এন্ট্রিগুলোতে ক্লিক করুন।',
     empty: 'বসানোর কিছু নেই: অন্তত একটি লেখা, টিক, ছবি বা আবরণ যোগ করুন।',
     pageRange: 'একটি এন্ট্রি পৃষ্ঠা {page} নির্দেশ করে, কিন্তু PDF-এ আছে মাত্র {count}টি।',
+    buildFailed: 'PDF তৈরি করা গেল না: {msg}',
   },
   ur: {
     helpTitle: 'شارٹ کٹس',
@@ -850,6 +861,7 @@ export const translations = {
     missingHelp: 'فائلیں منسلک کرنے کے لیے پینل میں ان اندراجات پر کلک کریں۔',
     empty: 'رکھنے کو کچھ نہیں: کم از کم ایک متن، نشان، تصویر یا ماسک شامل کریں۔',
     pageRange: 'ایک اندراج صفحہ {page} کی طرف اشارہ کرتا ہے، مگر PDF میں صرف {count} صفحات ہیں۔',
+    buildFailed: 'PDF نہیں بنایا جا سکا: {msg}',
   },
   id: {
     helpTitle: 'Pintasan',
@@ -918,6 +930,7 @@ export const translations = {
     missingHelp: 'Klik entri tersebut di panel untuk melampirkan berkasnya.',
     empty: 'Belum ada yang diletakkan: tambahkan setidaknya satu teks, centang, gambar, atau penutup.',
     pageRange: 'Ada entri menunjuk halaman {page}, tetapi PDF hanya punya {count}.',
+    buildFailed: 'PDF tidak dapat dibuat: {msg}',
   },
   ja: {
     helpTitle: 'ショートカット',
@@ -986,6 +999,7 @@ export const translations = {
     missingHelp: 'パネルで該当項目をクリックしてファイルを添付してください。',
     empty: '配置するものがありません。テキスト・チェック・画像・目隠しを最低ひとつ追加してください。',
     pageRange: 'ページ {page} を指す項目がありますが、PDF は {count} ページしかありません。',
+    buildFailed: 'PDF を生成できませんでした: {msg}',
   },
   tr: {
     helpTitle: 'Kısayollar',
@@ -1054,6 +1068,7 @@ export const translations = {
     missingHelp: 'Dosyaları eklemek için paneldeki bu girdilere tıklayın.',
     empty: 'Yerleştirilecek bir şey yok: en az bir metin, işaret, görsel veya örtü ekleyin.',
     pageRange: 'Bir girdi {page}. sayfayı gösteriyor ama PDF’de yalnızca {count} sayfa var.',
+    buildFailed: 'PDF oluşturulamadı: {msg}',
   },
   vi: {
     helpTitle: 'Phím tắt',
@@ -1122,6 +1137,7 @@ export const translations = {
     missingHelp: 'Nhấp vào các mục đó trong bảng để đính kèm tệp.',
     empty: 'Chưa có gì để đặt: thêm ít nhất một chữ, dấu tích, hình hoặc vùng che.',
     pageRange: 'Một mục trỏ tới trang {page}, nhưng PDF chỉ có {count} trang.',
+    buildFailed: 'Không thể tạo PDF: {msg}',
   },
 };
 
